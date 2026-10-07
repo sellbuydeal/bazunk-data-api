@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
 import { config } from "./config.js";
-import { requireApiKey } from "./auth.js";
+import { requireApiKey, requireScope } from "./auth.js";
 import { productCache } from "./cache.js";
 import { getProvider, providerStatus } from "./providers/registry.js";
 import { providerNames, type ProductSearchResult, type NormalizedProduct } from "./types/product.js";
@@ -27,13 +27,13 @@ export async function buildApp() {
     v1.addHook("preHandler", requireApiKey);
 
     v1.get("/me", async (request) => ({ client: request.apiClient }));
-    v1.get("/usage", async (request) => usageSummary(request.apiClient!.id));
-    v1.get("/providers", async (request) => {
+    v1.get("/usage", { preHandler: requireScope("usage:read") }, async (request) => usageSummary(request.apiClient!.id));
+    v1.get("/providers", { preHandler: requireScope("providers:read") }, async (request) => {
       recordUsage({ clientId: request.apiClient!.id, route: "/v1/providers", timestamp: new Date().toISOString() });
       return { providers: providerStatus() };
     });
 
-    v1.get("/products/search", async (request, reply) => {
+    v1.get("/products/search", { preHandler: requireScope("products:read") }, async (request, reply) => {
       const parsed = z.object({
         provider: providerSchema,
         q: z.string().trim().min(1).max(200),
@@ -57,7 +57,7 @@ export async function buildApp() {
       return { ...result, meta: { cache: "miss" } };
     });
 
-    v1.get("/products/:provider/:externalId", async (request, reply) => {
+    v1.get("/products/:provider/:externalId", { preHandler: requireScope("products:read") }, async (request, reply) => {
       const params = z.object({
         provider: providerSchema,
         externalId: z.string().trim().min(1).max(200)
