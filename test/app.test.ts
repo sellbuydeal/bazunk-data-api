@@ -33,3 +33,31 @@ test("authorized client can inspect provider status", async () => {
   assert.equal(response.json().providers.length, 4);
   await app.close();
 });
+
+test("authenticated client identity and usage are exposed", async () => {
+  const { buildApp } = await import("../src/app.js");
+  const app = await buildApp();
+
+  const me = await app.inject({
+    method: "GET",
+    url: "/v1/me",
+    headers: { "x-api-key": "test-key" }
+  });
+  assert.equal(me.statusCode, 200);
+  assert.equal(me.json().client.id, "bazunk-marketplace");
+
+  await app.inject({
+    method: "GET",
+    url: "/v1/providers",
+    headers: { "x-api-key": "test-key" }
+  });
+
+  const usage = await app.inject({
+    method: "GET",
+    url: "/v1/usage",
+    headers: { "x-api-key": "test-key" }
+  });
+  assert.equal(usage.statusCode, 200);
+  assert.ok(usage.json().requests >= 1);
+  await app.close();
+});
