@@ -10,7 +10,7 @@ declare module "fastify" {
 export async function requireApiKey(request: FastifyRequest, reply: FastifyReply) {
   const supplied = request.headers["x-api-key"];
   const key = Array.isArray(supplied) ? supplied[0] : supplied;
-  const client = key ? resolveClient(key) : null;
+  const client = key ? await resolveClient(key) : null;
   request.apiClient = client;
 
   if (!client) {
