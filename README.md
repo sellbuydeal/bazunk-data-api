@@ -63,3 +63,10 @@ A Render blueprint is included in `render.yaml`. Set `BAZUNK_API_KEYS` and allow
 ## Relationship to Bazunk Marketplace
 
 Bazunk Marketplace should eventually call this service rather than individual upstream APIs. Existing imported listings remain Bazunk records and are not changed by deploying this service.
+
+
+## Developer portal
+
+The repository also contains a separate Vite/React static site in `web/`. It is designed to deploy independently as `bazunk-data-web`, while the API remains `bazunk-data-api`.
+
+The portal currently includes the product landing page, provider overview, API endpoint preview and commercial-platform positioning. Future phases add live provider status, interactive requests, account/API-key management, usage charts, documentation and pricing/billing.
