@@ -8,7 +8,7 @@ import { productCache } from "./cache.js";
 import { getProvider, providerStatus } from "./providers/registry.js";
 import { providerNames, type ProductSearchResult, type NormalizedProduct } from "./types/product.js";
 import { recordUsage, usageSummary } from "./usage.js";
-import { issueKey, listKeys, revokeKey } from "./clients.js";
+import { issueKey, listKeys, revokeKey, listClients, createClient, setClientActive } from "./clients.js";
 
 const providerSchema = z.enum(providerNames);
 
@@ -45,6 +45,10 @@ export async function buildApp() {
       const parsed=z.object({id:z.string().uuid()}).safeParse(request.params);if(!parsed.success)return reply.code(400).send({error:"invalid_request"});
       const ok=await revokeKey(request.apiClient!.id,parsed.data.id);return ok?reply.code(204).send():reply.code(404).send({error:"not_found"});
     });
+
+    v1.get("/admin/clients", { preHandler: requireScope("clients:manage") }, async () => ({ clients: await listClients() }));
+    v1.post("/admin/clients", { preHandler: requireScope("clients:manage") }, async (request, reply) => { const parsed=z.object({name:z.string().trim().min(2).max(120),plan:z.enum(["developer","commercial"]).default("developer"),monthlyQuota:z.number().int().min(0).max(100000000).default(1000),rateLimitPerMinute:z.number().int().min(1).max(10000).default(60)}).safeParse(request.body??{});if(!parsed.success)return reply.code(400).send({error:"invalid_request",details:parsed.error.flatten()});const client=await createClient(parsed.data);const created=await issueKey(client.id,"Primary",["products:read","providers:read","usage:read"]);return reply.code(201).send({client,apiKey:created.key,keyPrefix:created.keyPrefix,warning:"Copy this API key now. It will not be shown again."}); });
+    v1.patch("/admin/clients/:id", { preHandler: requireScope("clients:manage") }, async (request, reply) => { const p=z.object({id:z.string().uuid()}).safeParse(request.params),b=z.object({active:z.boolean()}).safeParse(request.body??{});if(!p.success||!b.success)return reply.code(400).send({error:"invalid_request"});const client=await setClientActive(p.data.id,b.data.active);return client?{client}:reply.code(404).send({error:"not_found"}); });
 
     v1.get("/providers", { preHandler: requireScope("providers:read") }, async (request) => {
       recordUsage({ clientId: request.apiClient!.id, route: "/v1/providers", timestamp: new Date().toISOString() });
