@@ -1,0 +1,13 @@
+import { createHash, randomBytes } from "node:crypto";
+import pg from "pg";
+const [,,name="Developer",plan="developer"]=process.argv;
+const url=process.env.DATABASE_URL;
+if(!url) throw new Error("DATABASE_URL is required");
+const key="bzk_live_"+randomBytes(24).toString("base64url");
+const hash=createHash("sha256").update(key).digest("hex");
+const pool=new pg.Pool({connectionString:url,ssl:process.env.NODE_ENV==="production"?{rejectUnauthorized:false}:undefined});
+const client=await pool.query("INSERT INTO api_clients(name,plan) VALUES($1,$2) RETURNING id,name,plan",[name,plan]);
+await pool.query("INSERT INTO api_keys(client_id,key_prefix,key_hash) VALUES($1,$2,$3)",[client.rows[0].id,key.slice(0,16),hash]);
+console.log(JSON.stringify({client:client.rows[0],apiKey:key},null,2));
+console.log("Store this key now. Only its hash is stored in the database.");
+await pool.end();
