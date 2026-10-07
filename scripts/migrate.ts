@@ -1,0 +1,10 @@
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import pg from "pg";
+const url=process.env.DATABASE_URL;
+if(!url) throw new Error("DATABASE_URL is required");
+const pool=new pg.Pool({connectionString:url,ssl:process.env.NODE_ENV==="production"?{rejectUnauthorized:false}:undefined});
+const sql=await readFile(resolve("migrations/001_api_platform.sql"),"utf8");
+await pool.query(sql);
+console.log("Bazunk Data API migration complete");
+await pool.end();
