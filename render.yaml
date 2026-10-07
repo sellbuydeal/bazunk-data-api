@@ -11,6 +11,8 @@ services:
         value: "22"
       - key: NODE_ENV
         value: production
+      - key: DATABASE_URL
+        sync: false
       - key: BAZUNK_API_KEYS
         sync: false
       - key: CORS_ORIGINS
