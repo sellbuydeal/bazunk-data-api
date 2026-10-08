@@ -61,7 +61,8 @@ export async function buildApp() {
         q: z.string().trim().min(1).max(200),
         page: z.coerce.number().int().positive().default(1),
         country: z.string().trim().min(2).max(3).optional(),
-        currency: z.string().trim().length(3).optional()
+        currency: z.string().trim().length(3).optional(),
+        store: z.string().trim().min(3).max(253).optional()
       }).safeParse(request.query);
       if (!parsed.success) return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
 
@@ -69,12 +70,12 @@ export async function buildApp() {
       const provider = getProvider(p.provider);
       if (!provider.isConfigured()) return reply.code(503).send({ error: "provider_unavailable", provider: p.provider });
 
-      const cacheKey = `search:${p.provider}:${p.country ?? ""}:${p.currency ?? ""}:${p.page}:${p.q.toLowerCase()}`;
+      const cacheKey = `search:${p.provider}:${p.store ?? ""}:${p.country ?? ""}:${p.currency ?? ""}:${p.page}:${p.q.toLowerCase()}`;
       const cached = productCache.get<ProductSearchResult>(cacheKey);
       recordUsage({ clientId: request.apiClient!.id, route: "/v1/products/search", provider: p.provider, timestamp: new Date().toISOString(), cacheHit: Boolean(cached) });
       if (cached) return { ...cached, meta: { cache: "hit" } };
 
-      const result = await provider.search({ query: p.q, page: p.page, country: p.country, currency: p.currency });
+      const result = await provider.search({ query: p.q, page: p.page, country: p.country, currency: p.currency, store: p.store });
       productCache.set(cacheKey, result);
       return { ...result, meta: { cache: "miss" } };
     });
