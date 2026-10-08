@@ -100,6 +100,8 @@ export async function buildApp() {
       return { ...result, meta: { cache: "miss" } };
     });
 
+    v1.get("/shopify/import-preview",{preHandler:requireScope("products:read")},async(request:any,reply)=>{const parsed=z.object({url:z.string().trim().min(4).max(1000)}).safeParse(request.query);if(!parsed.success)return reply.code(400).send({error:"invalid_request",message:"A Shopify store, collection or product URL is required."});try{const provider:any=getProvider("shopify");const result=await provider.browseUrl(parsed.data.url);recordUsage({clientId:request.apiClient!.id,route:"/v1/shopify/import-preview",provider:"shopify",timestamp:new Date().toISOString()});return result;}catch(e:any){return reply.code(400).send({error:"shopify_url_unavailable",message:e?.message||"The Shopify URL could not be loaded."});}});
+
     v1.get("/products/:provider/:externalId", { preHandler: requireScope("products:read") }, async (request, reply) => {
       const params = z.object({
         provider: providerSchema,
