@@ -22,7 +22,7 @@ export async function usageSummary(clientId:string){
  if(db&&/^[0-9a-f-]{36}$/i.test(clientId)){
   const r=await db.query("SELECT count(*)::int requests,count(*) FILTER (WHERE created_at>=date_trunc('month',now()))::int month_requests FROM usage_events WHERE client_id=$1",[clientId]);
   const p=await db.query<ProviderUsageRow>("SELECT provider,count(*)::int requests FROM usage_events WHERE client_id=$1 AND provider IS NOT NULL AND created_at>=date_trunc('month',now()) GROUP BY provider ORDER BY requests DESC",[clientId]);
-  const d=await db.query<{day:string;requests:number}>("SELECT to_char(day,'YYYY-MM-DD') day,coalesce(count(e.id),0)::int requests FROM generate_series(date_trunc('month',now()),now(),'1 day') day LEFT JOIN usage_events e ON e.client_id=$1 AND e.created_at>=day AND e.created_at<day+interval '1 day' GROUP BY day ORDER BY day",[clientId]);
+  const d=await db.query<{day:string;requests:number}>("SELECT to_char(d.day,'YYYY-MM-DD') AS day,coalesce(count(e.id),0)::int AS requests FROM generate_series(date_trunc('month',now()),date_trunc('day',now()),interval '1 day') AS d(day) LEFT JOIN usage_events e ON e.client_id=$1 AND e.created_at>=d.day AND e.created_at<d.day+interval '1 day' GROUP BY d.day ORDER BY d.day",[clientId]);
   return {clientId,...r.rows[0],byProvider:Object.fromEntries(p.rows.map(x=>[x.provider,x.requests])),daily:d.rows};
  }
  const mine=events.filter(e=>e.clientId===clientId);
