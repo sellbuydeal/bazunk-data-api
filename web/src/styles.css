@@ -57,3 +57,10 @@
 .adminLoginCard input{background:#0c0f15;border:1px solid #343a47;border-radius:9px;color:#fff;padding:12px;font:inherit}
 .adminLoginCard button{border:0;cursor:pointer}
 .adminLoginCard small{color:#737c8d}
+
+/* Consistent Data Platform branding across public, admin and footer */
+.brandLogo,.adminBrandLogo{display:inline-flex;align-items:center;max-width:100%;min-width:0;line-height:0}
+.brandLogo img{display:block;width:220px;max-width:100%;height:auto;object-fit:contain}
+.adminBrandLogo img{display:block;width:190px;max-width:100%;height:auto;object-fit:contain}
+footer .brandLogo img{width:200px}
+@media(max-width:600px){.brandLogo img{width:160px}.adminBrandLogo img{width:165px}footer .brandLogo img{width:175px}}
