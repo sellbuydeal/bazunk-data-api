@@ -22,6 +22,10 @@ export async function getOrCreateClerkClient(clerkUserId:string,name:string){
  if(!db)throw new Error("database_unavailable");
  let r=await db.query("SELECT id,name,plan,monthly_quota,rate_limit_per_minute,active FROM api_clients WHERE clerk_user_id=$1",[clerkUserId]);
  if(r.rowCount)return r.rows[0];
- // Internal accounts must already be explicitly linked. Never let a new Clerk login claim an unlinked internal client.
+ // One-time bootstrap: only the configured verified Bazunk admin email may claim an unlinked internal client.
+ if(config.INTERNAL_ADMIN_EMAIL&&name.toLowerCase()===config.INTERNAL_ADMIN_EMAIL.toLowerCase()){
+  r=await db.query("UPDATE api_clients SET clerk_user_id=$1 WHERE id=(SELECT id FROM api_clients WHERE plan='internal' AND clerk_user_id IS NULL ORDER BY created_at LIMIT 1) AND clerk_user_id IS NULL RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[clerkUserId]);
+  if(r.rowCount)return r.rows[0];
+ }
  r=await db.query("INSERT INTO api_clients(name,clerk_user_id,plan,monthly_quota,rate_limit_per_minute) VALUES($1,$2,'developer',1000,60) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[name,clerkUserId]);return r.rows[0];
 }
