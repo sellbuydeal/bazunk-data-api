@@ -21,9 +21,10 @@ export async function currentMonthRequests(clientId:string){
 export async function usageSummary(clientId:string){
  if(db&&/^[0-9a-f-]{36}$/i.test(clientId)){
   const r=await db.query("SELECT count(*)::int requests,count(*) FILTER (WHERE created_at>=date_trunc('month',now()))::int month_requests FROM usage_events WHERE client_id=$1",[clientId]);
-  const p=await db.query<ProviderUsageRow>("SELECT provider,count(*)::int requests FROM usage_events WHERE client_id=$1 AND provider IS NOT NULL GROUP BY provider",[clientId]);
-  return {clientId,...r.rows[0],byProvider:Object.fromEntries(p.rows.map(x=>[x.provider,x.requests]))};
+  const p=await db.query<ProviderUsageRow>("SELECT provider,count(*)::int requests FROM usage_events WHERE client_id=$1 AND provider IS NOT NULL AND created_at>=date_trunc('month',now()) GROUP BY provider ORDER BY requests DESC",[clientId]);
+  const d=await db.query<{day:string;requests:number}>("SELECT to_char(day,'YYYY-MM-DD') day,coalesce(count(e.id),0)::int requests FROM generate_series(date_trunc('month',now()),now(),'1 day') day LEFT JOIN usage_events e ON e.client_id=$1 AND e.created_at>=day AND e.created_at<day+interval '1 day' GROUP BY day ORDER BY day",[clientId]);
+  return {clientId,...r.rows[0],byProvider:Object.fromEntries(p.rows.map(x=>[x.provider,x.requests])),daily:d.rows};
  }
  const mine=events.filter(e=>e.clientId===clientId);
- return {clientId,requests:mine.length,month_requests:await currentMonthRequests(clientId),byProvider:mine.reduce<Record<string,number>>((a,e)=>{if(e.provider)a[e.provider]=(a[e.provider]??0)+1;return a;},{})};
+ const monthStart=new Date();monthStart.setUTCDate(1);monthStart.setUTCHours(0,0,0,0);const monthly=mine.filter(e=>new Date(e.timestamp)>=monthStart);const daily:Record<string,number>={};for(const e of monthly){const day=new Date(e.timestamp).toISOString().slice(0,10);daily[day]=(daily[day]??0)+1;}return {clientId,requests:mine.length,month_requests:monthly.length,byProvider:monthly.reduce<Record<string,number>>((a,e)=>{if(e.provider)a[e.provider]=(a[e.provider]??0)+1;return a;},{}),daily:Object.entries(daily).map(([day,requests])=>({day,requests}))};
 }
