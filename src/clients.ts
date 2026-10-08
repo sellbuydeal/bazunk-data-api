@@ -17,3 +17,12 @@ export async function revokeKey(clientId:string,keyId:string){if(!db)throw new E
 export async function listClients(){if(!db)return[];const r=await db.query("SELECT c.id,c.name,c.plan,c.monthly_quota,c.rate_limit_per_minute,c.active,c.created_at,count(k.id)::int AS key_count FROM api_clients c LEFT JOIN api_keys k ON k.client_id=c.id GROUP BY c.id ORDER BY c.created_at DESC");return r.rows;}
 export async function createClient(input:{name:string;plan:"internal"|"developer"|"commercial";monthlyQuota:number;rateLimitPerMinute:number}){if(!db)throw new Error("database_unavailable");const r=await db.query("INSERT INTO api_clients(name,plan,monthly_quota,rate_limit_per_minute) VALUES($1,$2,$3,$4) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active,created_at",[input.name,input.plan,input.monthlyQuota,input.rateLimitPerMinute]);return r.rows[0];}
 export async function setClientActive(id:string,active:boolean){if(!db)throw new Error("database_unavailable");const r=await db.query("UPDATE api_clients SET active=$2 WHERE id=$1 RETURNING id,active",[id,active]);return r.rows[0]??null;}
+
+export async function getOrCreateClerkClient(clerkUserId:string,name:string){
+ if(!db)throw new Error("database_unavailable");
+ let r=await db.query("SELECT id,name,plan,monthly_quota,rate_limit_per_minute,active FROM api_clients WHERE clerk_user_id=$1",[clerkUserId]);
+ if(r.rowCount)return r.rows[0];
+ const internal=await db.query("SELECT id,name,plan,monthly_quota,rate_limit_per_minute,active FROM api_clients WHERE name='Bazunk Marketplace' AND plan='internal' AND clerk_user_id IS NULL ORDER BY created_at LIMIT 1");
+ if(internal.rowCount){const linked=await db.query("UPDATE api_clients SET clerk_user_id=$1 WHERE id=$2 RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[clerkUserId,internal.rows[0].id]);return linked.rows[0];}
+ r=await db.query("INSERT INTO api_clients(name,clerk_user_id,plan,monthly_quota,rate_limit_per_minute) VALUES($1,$2,'developer',1000,60) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[name,clerkUserId]);return r.rows[0];
+}
