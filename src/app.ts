@@ -8,7 +8,8 @@ import { productCache } from "./cache.js";
 import { getProvider, providerStatus } from "./providers/registry.js";
 import { providerNames, type ProductSearchResult, type NormalizedProduct } from "./types/product.js";
 import { recordUsage, usageSummary } from "./usage.js";
-import { issueKey, listKeys, revokeKey, listClients, createClient, setClientActive } from "./clients.js";
+import { issueKey, listKeys, revokeKey, listClients, createClient, setClientActive, getOrCreateClerkClient } from "./clients.js";
+import { createClerkClient, verifyToken } from "@clerk/backend";
 
 const providerSchema = z.enum(providerNames);
 
@@ -20,6 +21,11 @@ export async function buildApp() {
   await app.register(rateLimit, { max: config.DEFAULT_RATE_LIMIT, timeWindow: config.DEFAULT_RATE_WINDOW });
 
   app.get("/", async () => ({ name: "Bazunk Data API", version: "v1", status: "ok" }));
+  const clerk=config.CLERK_SECRET_KEY?createClerkClient({secretKey:config.CLERK_SECRET_KEY}):null;
+  async function webClient(request:any,reply:any){if(!clerk)return reply.code(503).send({error:"web_auth_unavailable"});const auth=request.headers.authorization;if(!auth?.startsWith("Bearer "))return reply.code(401).send({error:"unauthorized"});try{const claims=await verifyToken(auth.slice(7),{secretKey:config.CLERK_SECRET_KEY!});const user=await clerk.users.getUser(claims.sub);const email=user.primaryEmailAddress?.emailAddress??user.emailAddresses[0]?.emailAddress??"Bazunk developer";const client=await getOrCreateClerkClient(claims.sub,email);request.webClient=client;}catch{return reply.code(401).send({error:"unauthorized"});}}
+  app.get("/web/account",{preHandler:webClient},async(request:any)=>{const client=request.webClient;return{client,keys:await listKeys(client.id),usage:await usageSummary(client.id)};});
+  app.post("/web/keys",{preHandler:webClient},async(request:any,reply)=>{const client=request.webClient;const parsed=z.object({label:z.string().trim().min(1).max(80).default("default")}).safeParse(request.body??{});if(!parsed.success)return reply.code(400).send({error:"invalid_request"});const created=await issueKey(client.id,parsed.data.label,["products:read","providers:read","usage:read"]);return reply.code(201).send({...created,warning:"Copy this key now. It will not be shown again."});});
+  app.delete("/web/keys/:id",{preHandler:webClient},async(request:any,reply)=>{const client=request.webClient;const parsed=z.object({id:z.string().uuid()}).safeParse(request.params);if(!parsed.success)return reply.code(400).send({error:"invalid_request"});return await revokeKey(client.id,parsed.data.id)?reply.code(204).send():reply.code(404).send({error:"not_found"});});
   app.get("/health", async () => ({
     status: "ok", providers: providerStatus(), timestamp: new Date().toISOString()
   }));
