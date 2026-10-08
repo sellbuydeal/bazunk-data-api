@@ -5,6 +5,7 @@ export interface SearchOptions {
   page?: number;
   country?: string;
   currency?: string;
+  store?: string;
 }
 
 export interface ProductProvider {
