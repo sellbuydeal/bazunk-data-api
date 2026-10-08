@@ -1,4 +1,4 @@
-export const providerNames = ["amazon", "ebay", "walmart", "aliexpress"] as const;
+export const providerNames = ["amazon", "ebay", "walmart", "aliexpress", "shopify"] as const;
 export type ProviderName = (typeof providerNames)[number];
 
 export interface Money {
