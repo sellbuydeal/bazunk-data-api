@@ -18,12 +18,12 @@ export async function listClients(){if(!db)return[];const r=await db.query("SELE
 export async function createClient(input:{name:string;plan:"internal"|"developer"|"commercial";monthlyQuota:number;rateLimitPerMinute:number}){if(!db)throw new Error("database_unavailable");const r=await db.query("INSERT INTO api_clients(name,plan,monthly_quota,rate_limit_per_minute) VALUES($1,$2,$3,$4) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active,created_at",[input.name,input.plan,input.monthlyQuota,input.rateLimitPerMinute]);return r.rows[0];}
 export async function setClientActive(id:string,active:boolean){if(!db)throw new Error("database_unavailable");const r=await db.query("UPDATE api_clients SET active=$2 WHERE id=$1 RETURNING id,active",[id,active]);return r.rows[0]??null;}
 
-export async function getOrCreateClerkClient(clerkUserId:string,name:string){
+export async function getOrCreateClerkClient(clerkUserId:string,name:string,emailVerified=false){
  if(!db)throw new Error("database_unavailable");
  let r=await db.query("SELECT id,name,plan,monthly_quota,rate_limit_per_minute,active FROM api_clients WHERE clerk_user_id=$1",[clerkUserId]);
  if(r.rowCount)return r.rows[0];
  // One-time bootstrap: only the configured verified Bazunk admin email may claim an unlinked internal client.
- if(config.INTERNAL_ADMIN_EMAIL&&name.toLowerCase()===config.INTERNAL_ADMIN_EMAIL.toLowerCase()){
+ if(emailVerified&&config.INTERNAL_ADMIN_EMAIL&&name.toLowerCase()===config.INTERNAL_ADMIN_EMAIL.toLowerCase()){
   r=await db.query("UPDATE api_clients SET clerk_user_id=$1 WHERE id=(SELECT id FROM api_clients WHERE plan='internal' AND clerk_user_id IS NULL ORDER BY created_at LIMIT 1) AND clerk_user_id IS NULL RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[clerkUserId]);
   if(r.rowCount)return r.rows[0];
  }
