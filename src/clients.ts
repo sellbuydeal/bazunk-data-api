@@ -10,9 +10,9 @@ export async function resolveClient(key:string):Promise<ApiClient|null>{
  return{id:index===0?"bazunk-marketplace":`bootstrap-${index+1}`,name:index===0?"Bazunk Marketplace":`Bootstrap Client ${index+1}`,scopes:["products:read","providers:read","usage:read","keys:manage"],plan:"internal"};
 }
 export function generateApiKey(prefix="bzk_live"){return `${prefix}_${randomBytes(24).toString("base64url")}`;}
-export async function listKeys(clientId:string){if(!db)return[];const r=await db.query("SELECT id,key_prefix,label,scopes,active,last_used_at,created_at,revoked_at FROM api_keys WHERE client_id=$1 ORDER BY created_at DESC",[clientId]);return r.rows;}
+export async function listKeys(clientId:string){if(!db)return[];const r=await db.query("SELECT id,key_prefix,label,scopes,active,last_used_at,created_at,revoked_at,(scopes @> ARRAY['clients:manage']::text[] OR scopes @> ARRAY['keys:manage']::text[]) AS protected FROM api_keys WHERE client_id=$1 ORDER BY created_at DESC",[clientId]);return r.rows;}
 export async function issueKey(clientId:string,label:string,scopes:string[]){if(!db)throw new Error("database_unavailable");const key=generateApiKey();await db.query("INSERT INTO api_keys(client_id,key_prefix,key_hash,label,scopes) VALUES($1,$2,$3,$4,$5)",[clientId,key.slice(0,16),hex(key),label,scopes]);return{key,keyPrefix:key.slice(0,16),label,scopes};}
-export async function revokeKey(clientId:string,keyId:string){if(!db)throw new Error("database_unavailable");const r=await db.query("UPDATE api_keys SET active=false,revoked_at=now() WHERE id=$1 AND client_id=$2 AND revoked_at IS NULL RETURNING id",[keyId,clientId]);return Boolean(r.rowCount);}
+export async function revokeKey(clientId:string,keyId:string){if(!db)throw new Error("database_unavailable");const r=await db.query("UPDATE api_keys SET active=false,revoked_at=now() WHERE id=$1 AND client_id=$2 AND revoked_at IS NULL AND NOT (scopes @> ARRAY['clients:manage']::text[] OR scopes @> ARRAY['keys:manage']::text[]) RETURNING id",[keyId,clientId]);return Boolean(r.rowCount);}
 
 export async function listClients(){if(!db)return[];const r=await db.query("SELECT c.id,c.name,c.plan,c.monthly_quota,c.rate_limit_per_minute,c.active,c.created_at,count(k.id)::int AS key_count FROM api_clients c LEFT JOIN api_keys k ON k.client_id=c.id GROUP BY c.id ORDER BY c.created_at DESC");return r.rows;}
 export async function createClient(input:{name:string;plan:"internal"|"developer"|"commercial";monthlyQuota:number;rateLimitPerMinute:number}){if(!db)throw new Error("database_unavailable");const r=await db.query("INSERT INTO api_clients(name,plan,monthly_quota,rate_limit_per_minute) VALUES($1,$2,$3,$4) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active,created_at",[input.name,input.plan,input.monthlyQuota,input.rateLimitPerMinute]);return r.rows[0];}
@@ -22,7 +22,6 @@ export async function getOrCreateClerkClient(clerkUserId:string,name:string){
  if(!db)throw new Error("database_unavailable");
  let r=await db.query("SELECT id,name,plan,monthly_quota,rate_limit_per_minute,active FROM api_clients WHERE clerk_user_id=$1",[clerkUserId]);
  if(r.rowCount)return r.rows[0];
- const internal=await db.query("SELECT id,name,plan,monthly_quota,rate_limit_per_minute,active FROM api_clients WHERE name='Bazunk Marketplace' AND plan='internal' AND clerk_user_id IS NULL ORDER BY created_at LIMIT 1");
- if(internal.rowCount){const linked=await db.query("UPDATE api_clients SET clerk_user_id=$1 WHERE id=$2 RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[clerkUserId,internal.rows[0].id]);return linked.rows[0];}
+ // Internal accounts must already be explicitly linked. Never let a new Clerk login claim an unlinked internal client.
  r=await db.query("INSERT INTO api_clients(name,clerk_user_id,plan,monthly_quota,rate_limit_per_minute) VALUES($1,$2,'developer',1000,60) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[name,clerkUserId]);return r.rows[0];
 }
