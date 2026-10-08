@@ -18,7 +18,7 @@ export async function buildApp() {
   app.decorateRequest("apiClient", null);
 
   await app.register(cors, { origin: config.corsOrigins.length ? config.corsOrigins : false });
-  await app.register(rateLimit, { max: config.DEFAULT_RATE_LIMIT, timeWindow: config.DEFAULT_RATE_WINDOW });
+  await app.register(rateLimit, { max: 10000, timeWindow: config.DEFAULT_RATE_WINDOW }); // coarse abuse ceiling; authenticated API limits are enforced per client in requireApiKey
 
   app.get("/", async () => ({ name: "Bazunk Data API", version: "v1", status: "ok" }));
   const clerk=config.CLERK_SECRET_KEY?createClerkClient({secretKey:config.CLERK_SECRET_KEY}):null;
