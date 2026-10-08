@@ -39,3 +39,10 @@ export async function adminUsageSummary(){
  ]);
  return{monthRequests:totals.rows[0]?.month_requests??0,totalRequests:totals.rows[0]?.total_requests??0,activeClients:totals.rows[0]?.active_clients??0,byProvider:Object.fromEntries(providers.rows.map((x:any)=>[x.provider,x.requests])),daily:daily.rows,topClients:clients.rows};
 }
+
+export async function recentActivity(clientId:string,limit=8){
+ if(db&&/^[0-9a-f-]{36}$/i.test(clientId)){
+  const r=await db.query("SELECT route,provider,cache_hit,status_code,created_at FROM usage_events WHERE client_id=$1 ORDER BY created_at DESC LIMIT $2",[clientId,limit]);return r.rows;
+ }
+ return events.filter(e=>e.clientId===clientId).slice(-limit).reverse().map(e=>({route:e.route,provider:e.provider??null,cache_hit:e.cacheHit??null,status_code:e.statusCode??null,created_at:e.timestamp}));
+}
