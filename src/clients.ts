@@ -23,10 +23,20 @@ export async function setClientActive(id:string,active:boolean){if(!db)throw new
 export async function getOrCreateClerkClient(clerkUserId:string,name:string,emailVerified=false){
  if(!db)throw new Error("database_unavailable");
  let r=await db.query("SELECT id,name,plan,monthly_quota,rate_limit_per_minute,preferred_currency,active FROM api_clients WHERE clerk_user_id=$1",[clerkUserId]);
- if(r.rowCount)return r.rows[0];
+ const isConfiguredAdmin=emailVerified&&Boolean(config.INTERNAL_ADMIN_EMAIL)&&name.toLowerCase()===config.INTERNAL_ADMIN_EMAIL!.toLowerCase();
+ if(r.rowCount){
+  if(!isConfiguredAdmin||r.rows[0].plan==="internal")return r.rows[0];
+  // Repair an earlier normal signup for the configured admin: release that developer row,
+  // then attach the verified Clerk identity to the reserved internal account.
+  const promoted=await db.query("WITH old AS (UPDATE api_clients SET clerk_user_id=NULL WHERE id=$2 AND clerk_user_id=$1 RETURNING id) UPDATE api_clients SET clerk_user_id=$1,name=$3 WHERE id=(SELECT id FROM api_clients WHERE plan='internal' AND (clerk_user_id IS NULL OR clerk_user_id=$1) ORDER BY created_at LIMIT 1) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,preferred_currency,active",[clerkUserId,r.rows[0].id,name]);
+  if(promoted.rowCount)return promoted.rows[0];
+  // No reserved internal row exists: promote this verified, explicitly configured account in place.
+  const inPlace=await db.query("UPDATE api_clients SET clerk_user_id=$1,plan='internal',monthly_quota=1000000,rate_limit_per_minute=240 WHERE id=$2 RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,preferred_currency,active",[clerkUserId,r.rows[0].id]);
+  if(inPlace.rowCount)return inPlace.rows[0];
+ }
  // One-time bootstrap: only the configured verified Bazunk admin email may claim an unlinked internal client.
- if(emailVerified&&config.INTERNAL_ADMIN_EMAIL&&name.toLowerCase()===config.INTERNAL_ADMIN_EMAIL.toLowerCase()){
-  r=await db.query("UPDATE api_clients SET clerk_user_id=$1 WHERE id=(SELECT id FROM api_clients WHERE plan='internal' AND clerk_user_id IS NULL ORDER BY created_at LIMIT 1) AND clerk_user_id IS NULL RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[clerkUserId]);
+ if(isConfiguredAdmin){
+  r=await db.query("UPDATE api_clients SET clerk_user_id=$1,name=$2 WHERE id=(SELECT id FROM api_clients WHERE plan='internal' AND clerk_user_id IS NULL ORDER BY created_at LIMIT 1) AND clerk_user_id IS NULL RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,preferred_currency,active",[clerkUserId,name]);
   if(r.rowCount)return r.rows[0];
  }
  r=await db.query("INSERT INTO api_clients(name,clerk_user_id,plan,monthly_quota,rate_limit_per_minute) VALUES($1,$2,'developer',1000,60) RETURNING id,name,plan,monthly_quota,rate_limit_per_minute,active",[name,clerkUserId]);return r.rows[0];
