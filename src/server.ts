@@ -10,9 +10,10 @@ try {
   await app.listen({ port: config.PORT, host: config.HOST });
   // Each running API instance refreshes a small batch of due products.
   // A Postgres advisory lock prevents duplicate concurrent refresh runs.
-  if (db) {
+  const catalogueDb = db;
+  if (catalogueDb) {
     const refresh = async () => {
-      const client = await db.connect();
+      const client = await catalogueDb.connect();
       try {
         const lock = await client.query("SELECT pg_try_advisory_lock(87423019) AS acquired");
         if (!lock.rows[0]?.acquired) return;
