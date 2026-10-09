@@ -1,3 +1,4 @@
+import { officialConfigured, officialSearch, officialProduct } from "./providers/aliexpress/official-api.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -42,6 +43,25 @@ export async function buildApp() {
   app.patch("/web/admin/plans/:plan",{preHandler:internalAdmin},async(request:any,reply)=>{const admin=request.webClient;const p=z.object({plan:z.enum(["developer","commercial"])}).safeParse(request.params),b=z.object({monthlyQuota:z.number().int().min(0).max(100000000),rateLimitPerMinute:z.number().int().min(1).max(10000),prices:z.object({GBP:z.number().min(0),USD:z.number().min(0),EUR:z.number().min(0),AUD:z.number().min(0),CAD:z.number().min(0)}),active:z.boolean().default(true)}).safeParse(request.body??{});if(!p.success||!b.success)return reply.code(400).send({error:"invalid_request"});const database=(await import("./db.js")).db;if(!database)return reply.code(503).send({error:"database_unavailable"});const r=await database.query("UPDATE billing_plans SET monthly_quota=$2,rate_limit_per_minute=$3,prices=$4::jsonb,active=$5,updated_at=now() WHERE plan=$1 RETURNING plan,monthly_quota,rate_limit_per_minute,prices,active",[p.data.plan,b.data.monthlyQuota,b.data.rateLimitPerMinute,JSON.stringify(b.data.prices),b.data.active]);return{plan:r.rows[0]};});
   app.get("/web/plans",{preHandler:webClient},async(request:any)=>{const database=(await import("./db.js")).db;if(!database)return{plans:[],defaultCurrency:"GBP"};const [plans,settings]=await Promise.all([database.query("SELECT plan,monthly_quota,rate_limit_per_minute,prices,active FROM billing_plans WHERE active=true ORDER BY plan"),database.query("SELECT default_currency FROM platform_settings WHERE id=1")]);return{plans:plans.rows,defaultCurrency:request.webClient.preferred_currency??settings.rows[0]?.default_currency??"GBP",supportedCurrencies:["GBP","USD","EUR","AUD","CAD"]};});
   app.patch("/web/admin/clients/:id",{preHandler:internalAdmin},async(request:any,reply)=>{const admin=request.webClient;const p=z.object({id:z.string().uuid()}).safeParse(request.params),b=z.object({plan:z.enum(["developer","commercial"]).optional(),monthlyQuota:z.number().int().min(0).max(100000000).optional(),rateLimitPerMinute:z.number().int().min(1).max(10000).optional(),active:z.boolean().optional()}).safeParse(request.body??{});if(!p.success||!b.success)return reply.code(400).send({error:"invalid_request"});const client=await updateClientAdmin(p.data.id,b.data);return client?{client}:reply.code(404).send({error:"not_found"});});
+  // Internal first-party marketplace access. Not exposed to third-party API customers.
+  async function internalAliExpress(request:any, reply:any) {
+    const token = process.env.ALIEXPRESS_INTERNAL_TOKEN;
+    const header = request.headers.authorization;
+    if (!token || !header || header !== "Bearer " + token) return reply.code(401).send({error:"unauthorized"});
+    if (!officialConfigured()) return reply.code(503).send({error:"aliexpress_not_configured"});
+  }
+  app.get("/internal/aliexpress/search", {preHandler:internalAliExpress}, async (request:any,reply) => {
+    const parsed=z.object({q:z.string().trim().min(1).max(120),page:z.coerce.number().int().min(1).max(100).default(1),currency:z.enum(["USD","GBP","EUR","CAD","AUD"]).default("USD"),country:z.string().regex(/^[A-Z]{2}$/).default("GB")}).safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:"invalid_request"});
+    return officialSearch({query:parsed.data.q,page:parsed.data.page,currency:parsed.data.currency,country:parsed.data.country});
+  });
+  app.get("/internal/aliexpress/products/:id", {preHandler:internalAliExpress}, async (request:any,reply) => {
+    const parsed=z.object({id:z.string().regex(/^\\d{10,20}$/)}).safeParse(request.params);
+    if(!parsed.success)return reply.code(400).send({error:"invalid_product_id"});
+    const product=await officialProduct(parsed.data.id);
+    return product ?? reply.code(404).send({error:"product_not_found"});
+  });
+
   app.get("/health", async () => ({
     status: "ok", providers: providerStatus(), timestamp: new Date().toISOString()
   }));
