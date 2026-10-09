@@ -23,7 +23,15 @@ Scheduled and admin “sync all” both call the marketplace syncAllImports work
 - Additional Fastify authentication/private-URL regression cases are included but the full Data Platform app suite was not executed in this environment (complete dependencies unavailable).
 
 ## Production status and limits
-Production has NOT been certified. Render monitoring returned “no workspace selected” and explicitly requires the user to confirm Chad's workspace before any workspace-specific read. The fixes are proposed on review branches, not deployed.
+Production has NOT been certified. Chad's workspace is now confirmed. The fixes are proposed on review branches, not deployed.
 After merging/deploying both repositories, use a real authenticated seller and a supported public Shopify catalogue: preview a product and collection; deselect a product; import with 0/20 percent and fixed markup; confirm category, currency, GBP conversion and seller; inspect both persisted rows; change source price/availability; run tracked importer sync; confirm updates and disabled-sync exclusion.
 The public Storefront interface supplies availability rather than exact private inventory counts. Listing quantity remains a 0/1 availability indicator. Catalogue previews are capped at 100 per URL. Browser handoff is capped at 100 selected products and 14,000 encoded characters, with an explicit smaller-batch message.
 
+
+## Live observations after workspace confirmation
+- Data API health returned HTTP 200 with Shopify configured=true.
+- Unsigned Data API preview, marketplace preview and marketplace import each returned HTTP 401.
+- Production logs confirm an authenticated preview of allin1gaming.com/products/phantom-30-sim-racing-cockpit returned HTTP 200 at 00:07 UTC on 9 October.
+- The same live product Ajax response returns 76500. The exact replacement tokenless GraphQL query succeeded and returned 765.0 CAD with availableForSale=true, confirming the price-unit/currency mismatch.
+- A read-only production database query found zero tracked shopify-public imports. Persisted listing creation and sync could not be verified against an existing production import.
+- Live services deploy main, which excludes these draft fixes. Full certification requires deploying both changes and an authenticated seller import followed by sync. No test listings were published and no deployments were triggered.
