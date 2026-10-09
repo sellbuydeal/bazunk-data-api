@@ -26,9 +26,9 @@ export async function officialCall(method: string, input: Record<string, string>
     timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
     ...input
   };
-  if (method === "aliexpress.ds.product.get") {
+  if (method.startsWith("aliexpress.ds.")) {
     const token = process.env.ALIEXPRESS_ACCESS_TOKEN;
-    if (!token) throw new Error("AliExpress Dropshipping product details require ALIEXPRESS_ACCESS_TOKEN");
+    if (!token) throw new Error("AliExpress Dropshipping requests require ALIEXPRESS_ACCESS_TOKEN");
     params.session = token;
   }
   const signingText = Object.keys(params).sort().map(k => k + params[k]).join("");
@@ -54,7 +54,7 @@ function resultNode(body: Obj, method: string): Obj {
   const root = method.replace(/\./g, "_") + "_response";
   const response = obj(body[root] ?? body);
   const code = str(response.code ?? body.code);
-  if (code && code !== "0" && code !== "200") throw new Error("AliExpress: " + str(response.msg ?? body.msg ?? code));
+  if (code && code !== "0" && code !== "00" && code !== "200") throw new Error("AliExpress: " + str(response.msg ?? body.msg ?? code));
   const rsp = str(response.rsp_code ?? body.rsp_code);
   if (rsp && rsp !== "200" && rsp !== "0") throw new Error("AliExpress: " + str(response.rsp_msg ?? rsp));
   return response;
@@ -108,11 +108,11 @@ export async function officialSearch(options: SearchOptions): Promise<ProductSea
   if(!query)throw new Error("Search keywords are required");
   const currency=isoCurrency(options.currency,"USD");
   const body=await officialCall("aliexpress.ds.text.search",{
-    keyWord:query,local:"en_US",countryCode:(options.country??"GB").toUpperCase().slice(0,2),
-    currency,pageIndex:String(page),pageSize:"20"
+    keyword:query,local:"en_US",countryCode:(options.country??"GB").toUpperCase().slice(0,2),
+    currency,page_index:String(page),page_size:"20"
   });
   const response=resultNode(body,"aliexpress.ds.text.search");
-  const data=obj(response.data), entries=Array.isArray(data.products)?data.products:[];
+  const data=obj(response.data), products=data.products, entries=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:[];
   const items=entries.map(x=>searchProduct(x,currency)).filter((x):x is NormalizedProduct=>x!==null);
   return {provider:"aliexpress",query,page,items,nextPage:entries.length===20?page+1:undefined};
 }
