@@ -1,20 +1,18 @@
 import type { ProductProvider, SearchOptions } from "../provider.js";
-import type { NormalizedProduct, ProductSearchResult } from "../../types/product.js";
-
-const API_VERSION="2026-10";
-function domain(input:string){const s=input.trim().replace(/^https?:\/\//i,"").split("/")[0].toLowerCase();if(!/^[a-z0-9.-]+$/.test(s)||!s.includes("."))throw new Error("Invalid Shopify store domain");return s;}
-function money(v:any){const amount=Number(v?.amount);return Number.isFinite(amount)?{amount,currency:String(v?.currencyCode||"USD")}:undefined;}
-function normalize(n:any,store:string):NormalizedProduct{
- const variants=(n.variants?.nodes??[]);const first=variants[0];const handle=String(n.handle||"");
- return {provider:"shopify",externalId:handle||String(n.id),sourceUrl:`https://${store}/products/${handle}`,title:String(n.title||"Untitled product"),description:n.description||undefined,brand:n.vendor||undefined,category:n.productType||undefined,price:money(n.priceRange?.minVariantPrice),images:(n.images?.nodes??[]).map((x:any)=>({url:String(x.url),alt:x.altText||undefined})),features:[],variants:variants.flatMap((v:any)=>(v.selectedOptions??[]).map((o:any)=>({id:String(v.id),name:String(o.name),value:String(o.value),available:Boolean(v.availableForSale),price:money(v.price)}))),availability:first?(first.availableForSale?"in_stock":"out_of_stock"):"unknown",retrievedAt:new Date().toISOString()};
-}
-const fields=`id handle title description vendor productType availableForSale priceRange { minVariantPrice { amount currencyCode } } images(first:10){nodes{url altText}} variants(first:20){nodes{id availableForSale price{amount currencyCode} selectedOptions{name value}}}`;
-async function gql(store:string,query:string,variables:any){const r=await fetch(`https://${store}/api/${API_VERSION}/graphql.json`,{method:"POST",headers:{"content-type":"application/json","accept":"application/json"},body:JSON.stringify({query,variables})});if(!r.ok)throw new Error(`Shopify Storefront API HTTP ${r.status}`);const j:any=await r.json();if(j.errors?.length)throw new Error(j.errors[0]?.message||"Shopify query failed");return j.data;}
-export class ShopifyProvider implements ProductProvider{
- async browseUrl(input:string):Promise<{store:string,kind:string,items:NormalizedProduct[]}>{const u=new URL(/^https?:\/\//i.test(input)?input:`https://${input}`);const store=domain(u.hostname);const product=u.pathname.match(/^\/products\/([^/?#]+)/);if(product){const item=await this.getProductByUrl(u.toString());return{store,kind:"product",items:item?[item]:[]};}const collection=u.pathname.match(/^\/collections\/([^/?#]+)/);let q:string;if(collection){q=`query($handle:String!){collection(handle:$handle){products(first:100){nodes{${fields}}}}}`;const d=await gql(store,q,{handle:collection[1]});return{store,kind:"collection",items:(d.collection?.products?.nodes??[]).map((n:any)=>normalize(n,store))};}q=`query{products(first:100){nodes{${fields}}}}`;const d=await gql(store,q,{});return{store,kind:"store",items:(d.products?.nodes??[]).map((n:any)=>normalize(n,store))};}
-
- readonly name="shopify" as const;isConfigured(){return true;}
- async search(o:SearchOptions):Promise<ProductSearchResult>{if(!o.store)throw new Error("Shopify searches require store");const store=domain(o.store);const q=`query($q:String!){products(first:24,query:$q){nodes{${fields}}}}`;const d=await gql(store,q,{q:o.query});return{provider:"shopify",query:o.query,page:o.page??1,items:(d.products?.nodes??[]).map((n:any)=>normalize(n,store))};}
- async getProduct(externalId:string,options?:{country?:string}):Promise<NormalizedProduct|null>{throw new Error("Shopify product lookup requires a store-scoped search; use search with store");}
- async getProductByUrl(url:string){const u=new URL(url);const m=u.pathname.match(/\/products\/([^/?#]+)/);if(!m)return null;const store=domain(u.hostname);const q=`query($handle:String!){product(handle:$handle){${fields}}}`;const d=await gql(store,q,{handle:m[1]});return d.product?normalize(d.product,store):null;}
+import { browseShopify } from "./public-storefront.js";
+export class ShopifyProvider implements ProductProvider {
+ readonly name = "shopify" as const;
+ isConfigured() { return true; }
+ browseUrl(input: string) { return browseShopify(input); }
+ async search(o: SearchOptions) {
+  if (!o.store) throw new Error("Shopify searches require store");
+  const result = await browseShopify(o.store, o.query);
+  return { provider: this.name, query: o.query, page: 1, items: result.items };
+ }
+ async getProduct(_externalId: string): Promise<null> { throw new Error("Shopify product lookup requires a source URL"); }
+ async getProductByUrl(url: string) {
+  const result = await browseShopify(url);
+  if (result.kind !== "product") throw new Error("Enter a Shopify product URL");
+  return result.items[0] ?? null;
+ }
 }

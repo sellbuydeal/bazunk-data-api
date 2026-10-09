@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "test": "node --import tsx --test test/**/*.test.ts",
+    "test": "node --import tsx --test test/*.test.ts test/*.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:migrate": "tsx scripts/migrate.ts",
     "key:create": "tsx scripts/create-api-key.ts"
