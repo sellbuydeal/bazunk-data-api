@@ -43,7 +43,17 @@ export class AliExpressProvider implements ProductProvider {
   isConfigured(): boolean {
     return process.env.ALIEXPRESS_PROVIDER_ENABLED === "true" &&
       process.env.ALIEXPRESS_RESALE_LICENSE_CONFIRMED === "true" &&
-      Boolean(process.env.ALIEXPRESS_RAPIDAPI_KEY);
+      Boolean(process.env.ALIEXPRESS_SCRAPER_URL && process.env.ALIEXPRESS_SCRAPER_TOKEN) || Boolean(process.env.ALIEXPRESS_RAPIDAPI_KEY);
+  }
+  private async scrape(path: string): Promise<Obj> {
+    const base = process.env.ALIEXPRESS_SCRAPER_URL;
+    const token = process.env.ALIEXPRESS_SCRAPER_TOKEN;
+    if (!base || !token) throw new Error("Scraper source is not configured");
+    const target = new URL(path, base.endsWith("/") ? base : base + "/");
+    if (target.origin !== new URL(base).origin) throw new Error("Invalid scraper endpoint");
+    const response = await fetch(target, { headers: { Authorization: "Bearer " + token }, signal: AbortSignal.timeout(20000) });
+    if (!response.ok) throw new Error("AliExpress scraper HTTP " + response.status);
+    return object(await response.json());
   }
   private async request(endpoint: string, params: URLSearchParams): Promise<Obj> {
     if (!this.isConfigured()) throw new Error("AliExpress public API is disabled until redistribution rights and credentials are configured.");
@@ -61,6 +71,10 @@ export class AliExpressProvider implements ProductProvider {
     const query = options.query.trim().slice(0, 120);
     if (!query) throw new Error("Search query is required");
     const page = Math.min(100, Math.max(1, options.page ?? 1));
+    if (process.env.ALIEXPRESS_SCRAPER_URL && process.env.ALIEXPRESS_SCRAPER_TOKEN) {
+      const result = await this.scrape("v1/aliexpress/search?q=" + encodeURIComponent(query) + "&page=" + page);
+      return { provider: this.name, query, page, items: Array.isArray(result.items) ? result.items as NormalizedProduct[] : [], nextPage: result.nextPage };
+    }
     const data = await this.request("item_search_2", new URLSearchParams({ q: query, page: String(page), currency: "USD", locale: "en_US", region: "GB" }));
     const result = object(data.result);
     const list = result.resultList ?? result.items ?? data.resultList ?? [];
@@ -70,6 +84,10 @@ export class AliExpressProvider implements ProductProvider {
   }
   async getProduct(externalId: string): Promise<NormalizedProduct | null> {
     if (!/^\d{10,}$/.test(externalId)) throw new Error("Invalid AliExpress product ID");
+    if (process.env.ALIEXPRESS_SCRAPER_URL && process.env.ALIEXPRESS_SCRAPER_TOKEN) {
+      const item = await this.scrape("v1/aliexpress/products/" + externalId);
+      return item.externalId ? item as NormalizedProduct : null;
+    }
     const params = new URLSearchParams({ itemId: externalId, currency: "USD", locale: "en_US", region: "GB", country: "GB" });
     let last: unknown;
     for (const endpoint of ["item_detail_2", "item_detail"]) {
