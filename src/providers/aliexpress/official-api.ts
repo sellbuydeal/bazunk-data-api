@@ -113,7 +113,7 @@ export async function officialSearch(options: SearchOptions): Promise<ProductSea
   });
   const response=resultNode(body,"aliexpress.ds.text.search");
   const data=obj(response.data), products=data.products, entries=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:[];
-  const items=entries.map(x=>searchProduct(x,currency)).filter((x):x is NormalizedProduct=>x!==null);
+  const items=entries.map((x: unknown)=>searchProduct(x,currency)).filter((x: NormalizedProduct | null):x is NormalizedProduct=>x!==null);
   return {provider:"aliexpress",query,page,items,nextPage:entries.length===20?page+1:undefined};
 }
 export async function officialProduct(id:string):Promise<NormalizedProduct|null>{
