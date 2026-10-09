@@ -12,6 +12,8 @@ export async function beginAliExpressAuthorization(): Promise<string> {
   url.searchParams.set("client_id", process.env.ALIEXPRESS_APP_KEY);
   url.searchParams.set("redirect_uri", aliexpressRedirectUri());
   url.searchParams.set("state", state);
+  // Reject malformed callback URLs before sending the user to AliExpress.
+  if (url.searchParams.getAll("redirect_uri").length !== 1) throw new Error("Invalid AliExpress redirect configuration");
   return url.toString();
 }
 
