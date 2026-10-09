@@ -2,6 +2,9 @@ import pg from "pg"; import { createHash } from "node:crypto"; import { config }
 export const db=config.DATABASE_URL?new Pool({connectionString:config.DATABASE_URL,ssl:config.NODE_ENV==="production"?{rejectUnauthorized:false}:undefined,max:10}):null;
 export async function migrateDatabase(){if(!db)return{configured:false,migrated:false};await db.query(`
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE TABLE IF NOT EXISTS product_catalogue(provider text NOT NULL, external_id text NOT NULL, product jsonb NOT NULL, last_fetched_at timestamptz NOT NULL DEFAULT now(), next_sync_at timestamptz NOT NULL DEFAULT now() + interval '6 hours', sync_error text, PRIMARY KEY(provider,external_id));
+CREATE INDEX IF NOT EXISTS product_catalogue_sync_idx ON product_catalogue(next_sync_at);
+
 CREATE TABLE IF NOT EXISTS api_clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),name text NOT NULL,clerk_user_id text UNIQUE,plan text NOT NULL DEFAULT 'developer' CHECK(plan IN('internal','developer','commercial')),monthly_quota integer NOT NULL DEFAULT 1000 CHECK(monthly_quota>=0),rate_limit_per_minute integer NOT NULL DEFAULT 60 CHECK(rate_limit_per_minute>0),active boolean NOT NULL DEFAULT true,created_at timestamptz NOT NULL DEFAULT now());
 ALTER TABLE api_clients ADD COLUMN IF NOT EXISTS clerk_user_id text UNIQUE;
 ALTER TABLE api_clients ADD COLUMN IF NOT EXISTS preferred_currency text CHECK(preferred_currency IN('GBP','USD','EUR','AUD','CAD'));
