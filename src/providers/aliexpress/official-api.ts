@@ -14,7 +14,7 @@ const productId = (p: Obj) => str(p.product_id ?? p.productId ?? p.item_id ?? p.
 const isoCurrency = (v: unknown, fallback: string) => /^[A-Z]{3}$/.test(str(v).toUpperCase()) ? str(v).toUpperCase() : fallback;
 
 export function officialConfigured(): boolean {
-  return Boolean(process.env.ALIEXPRESS_APP_KEY && process.env.ALIEXPRESS_APP_SECRET && process.env.ALIEXPRESS_TRACKING_ID);
+  return Boolean(process.env.ALIEXPRESS_APP_KEY && process.env.ALIEXPRESS_APP_SECRET);
 }
 
 /** AliExpress TOP-style gateway signature. Credentials never enter the browser. */
@@ -26,6 +26,11 @@ export async function officialCall(method: string, input: Record<string, string>
     timestamp: new Date().toISOString().replace("T", " ").slice(0, 19),
     ...input
   };
+  if (method === "aliexpress.ds.product.get") {
+    const token = process.env.ALIEXPRESS_ACCESS_TOKEN;
+    if (!token) throw new Error("AliExpress Dropshipping product details require ALIEXPRESS_ACCESS_TOKEN");
+    params.session = token;
+  }
   const signingText = Object.keys(params).sort().map(k => k + params[k]).join("");
   params.sign = createHmac("sha256", secret).update(signingText).digest("hex").toUpperCase();
   const gateway = process.env.ALIEXPRESS_API_GATEWAY || "https://api-sg.aliexpress.com/sync";
@@ -44,54 +49,79 @@ export async function officialCall(method: string, input: Record<string, string>
   return body;
 }
 
-function normalise(raw: unknown, currency: string): NormalizedProduct | null {
-  const p = obj(raw), id = productId(p);
-  const title = str(p.product_title ?? p.title ?? p.subject).trim();
-  if (!/^\d{10,20}$/.test(id) || !title) return null;
-  const rawImages = p.product_small_image_urls?.string ?? p.product_image_urls?.string ?? p.images ?? [p.product_main_image_url ?? p.product_image_url];
-  const img = (Array.isArray(rawImages) ? rawImages : [rawImages]).map(str).filter(x => /^https?:\/\//.test(x) || x.startsWith("//")).map(x => x.startsWith("//") ? "https:" + x : x);
-  const rawPrice = value(p.target_sale_price ?? p.target_app_sale_price ?? p.sale_price ?? p.app_sale_price);
-  const price = amount(rawPrice);
-  const reportedCurrency = isoCurrency(p.target_sale_price_currency ?? p.target_app_sale_price_currency ?? p.sale_price_currency, currency);
+
+function resultNode(body: Obj, method: string): Obj {
+  const root = method.replace(/\\./g, "_") + "_response";
+  const response = obj(body[root] ?? body);
+  const code = str(response.code ?? body.code);
+  if (code && code !== "0" && code !== "200") throw new Error("AliExpress: " + str(response.msg ?? body.msg ?? code));
+  const rsp = str(response.rsp_code ?? body.rsp_code);
+  if (rsp && rsp !== "200" && rsp !== "0") throw new Error("AliExpress: " + str(response.rsp_msg ?? rsp));
+  return response;
+}
+function images(raw: unknown): string[] {
+  const entries = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(";") : [];
+  return entries.map(str).map(x => x.trim()).filter(x => /^https?:\\/\\//.test(x)).slice(0,12);
+}
+function searchProduct(raw: unknown, currency: string): NormalizedProduct | null {
+  const p = obj(raw), id = str(p.itemId), title = str(p.title).trim();
+  if (!/^\\d{10,20}$/.test(id) || !title) return null;
+  const price = amount(p.targetSalePrice ?? p.salePrice);
   return {
-    provider: "aliexpress", externalId: id, sourceUrl: "https://www.aliexpress.com/item/" + id + ".html",
-    title: title.slice(0,500), description: str(p.product_description ?? p.description).slice(0,10000),
-    category: str(p.first_level_category_name ?? p.second_level_category_name ?? p.category_name),
-    price: price === undefined ? undefined : { amount: price, currency: reportedCurrency },
-    images: img.slice(0,12).map(url => ({url})), features: [], variants: [], availability: "unknown",
-    retrievedAt: new Date().toISOString()
+    provider:"aliexpress", externalId:id, sourceUrl:"https://www.aliexpress.com/item/"+id+".html",
+    title, category:str(p.cateId), images:images([p.itemMainPic]), features:[], variants:[],
+    price:price === undefined ? undefined : {amount:price,currency:isoCurrency(p.salePriceCurrency,currency)},
+    availability:"unknown", retrievedAt:new Date().toISOString()
   };
 }
-function resultNode(body: Obj, method: string): Obj {
-  const root = method.replace(/\./g, "_") + "_response";
-  const response = obj(body[root] ?? body);
-  const resp = obj(response.resp_result ?? response);
-  if (resp.resp_code && str(resp.resp_code) !== "200" && str(resp.resp_code) !== "0") throw new Error("AliExpress: " + str(resp.resp_msg ?? resp.resp_code));
-  return obj(resp.result ?? response.result ?? resp);
+function detailProduct(raw: unknown, requestedId: string, currency: string): NormalizedProduct | null {
+  const p=obj(raw), base=obj(p.ae_item_base_info_dto), id=str(base.product_id || requestedId);
+  if (!/^\\d{10,20}$/.test(id) || !str(base.subject).trim()) return null;
+  const skus=Array.isArray(p.ae_item_sku_info_dtos) ? p.ae_item_sku_info_dtos.map(obj) : [];
+  const variants=skus.flatMap(s => {
+    const props=Array.isArray(s.ae_sku_property_dtos) ? s.ae_sku_property_dtos.map(obj) : [];
+    return props.map(prop => ({
+      id:str(s.sku_id), name:str(prop.sku_property_name), value:str(prop.property_value_definition_name ?? prop.sku_property_value),
+      available:Number(s.sku_available_stock)>0,
+      ...(amount(s.offer_sale_price ?? s.sku_price) === undefined ? {} : {price:{amount:amount(s.offer_sale_price ?? s.sku_price)!,currency:isoCurrency(s.currency_code,currency)}})
+    }));
+  });
+  const prices=skus.map(s=>amount(s.offer_sale_price ?? s.sku_price)).filter((x):x is number=>x!==undefined);
+  const stock=skus.map(s=>Number(s.sku_available_stock)).filter(Number.isFinite);
+  const img=images(obj(p.ae_multimedia_info_dto).image_urls);
+  for(const sku of skus) for(const prop of Array.isArray(sku.ae_sku_property_dtos)?sku.ae_sku_property_dtos:[]) {
+    const url=str(obj(prop).sku_image);if(/^https?:\\/\\//.test(url)&&!img.includes(url)&&img.length<12)img.push(url);
+  }
+  return {
+    provider:"aliexpress",externalId:id,sourceUrl:"https://www.aliexpress.com/item/"+id+".html",
+    title:str(base.subject),description:str(base.detail ?? base.mobile_detail).slice(0,10000),
+    category:str(base.category_id),brand:str((Array.isArray(p.ae_item_properties)?p.ae_item_properties:[]).find((x:unknown)=>str(obj(x).attr_name)==="Brand Name")?.attr_value),
+    images:img.map(url=>({url})),features:[],variants,
+    price:prices.length?{amount:Math.min(...prices),currency:isoCurrency(skus[0]?.currency_code,currency)}:undefined,
+    availability:stock.length?(stock.some(x=>x>0)?"in_stock":"out_of_stock"):"unknown",
+    rating:amount(base.avg_evaluation_rating),reviewCount:Number(base.evaluation_count)||undefined,
+    retrievedAt:new Date().toISOString()
+  };
 }
 export async function officialSearch(options: SearchOptions): Promise<ProductSearchResult> {
-  const query = options.query.trim().slice(0,120), page = Math.min(100,Math.max(1,options.page ?? 1));
-  if (!query) throw new Error("Search keywords are required");
-  const currency = isoCurrency(options.currency, "USD");
-  const body = await officialCall("aliexpress.affiliate.product.query", {
-    keywords: query, page_no: String(page), page_size: "20", target_currency: currency,
-    target_language: "EN", ship_to_country: (options.country ?? "GB").toUpperCase().slice(0,2),
-    tracking_id: process.env.ALIEXPRESS_TRACKING_ID ?? ""
+  const query=options.query.trim().slice(0,120),page=Math.min(100,Math.max(1,options.page??1));
+  if(!query)throw new Error("Search keywords are required");
+  const currency=isoCurrency(options.currency,"USD");
+  const body=await officialCall("aliexpress.ds.text.search",{
+    keyWord:query,local:"en_US",countryCode:(options.country??"GB").toUpperCase().slice(0,2),
+    currency,pageIndex:String(page),pageSize:"20"
   });
-  const result = resultNode(body,"aliexpress.affiliate.product.query");
-  const list = result.products?.product ?? result.products ?? result.items ?? [];
-  const entries = Array.isArray(list) ? list : [];
-  const items = entries.map(x => normalise(x,currency)).filter((x): x is NormalizedProduct => x !== null);
+  const response=resultNode(body,"aliexpress.ds.text.search");
+  const data=obj(response.data), entries=Array.isArray(data.products)?data.products:[];
+  const items=entries.map(x=>searchProduct(x,currency)).filter((x):x is NormalizedProduct=>x!==null);
   return {provider:"aliexpress",query,page,items,nextPage:entries.length===20?page+1:undefined};
 }
-export async function officialProduct(id: string): Promise<NormalizedProduct | null> {
-  if (!/^\d{10,20}$/.test(id)) throw new Error("Invalid AliExpress product ID");
-  const body = await officialCall("aliexpress.affiliate.productdetail.get", {
-    product_ids:id, target_currency:"USD", target_language:"EN", ship_to_country:"GB",
-    tracking_id: process.env.ALIEXPRESS_TRACKING_ID ?? ""
+export async function officialProduct(id:string):Promise<NormalizedProduct|null>{
+  if(!/^\\d{10,20}$/.test(id))throw new Error("Invalid AliExpress product ID");
+  const body=await officialCall("aliexpress.ds.product.get",{
+    product_id:id,ship_to_country:"GB",target_currency:"USD",target_language:"en",
+    remove_personal_benefit:"true"
   });
-  const result = resultNode(body,"aliexpress.affiliate.productdetail.get");
-  const list = result.products?.product ?? result.products ?? result.product ?? result;
-  const entry = Array.isArray(list) ? list.find(x => productId(obj(x)) === id) : list;
-  return normalise(entry,"USD");
+  const response=resultNode(body,"aliexpress.ds.product.get");
+  return detailProduct(response.result??body.result,id,"USD");
 }
