@@ -69,7 +69,7 @@ function searchProduct(raw: unknown, currency: string): NormalizedProduct | null
   const price = amount(p.targetSalePrice ?? p.salePrice);
   return {
     provider:"aliexpress", externalId:id, sourceUrl:"https://www.aliexpress.com/item/"+id+".html",
-    title, category:str(p.cateId), images:images([p.itemMainPic]), features:[], variants:[],
+    title, category:str(p.cateId), images:images([p.itemMainPic]).map(url => ({url})), features:[], variants:[],
     price:price === undefined ? undefined : {amount:price,currency:isoCurrency(p.salePriceCurrency,currency)},
     availability:"unknown", retrievedAt:new Date().toISOString()
   };
