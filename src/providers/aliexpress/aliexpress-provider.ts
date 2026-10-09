@@ -1,3 +1,4 @@
+import { db } from "../../db.js";
 import type { ProductProvider, SearchOptions } from "../provider.js";
 import type { NormalizedProduct, ProductSearchResult } from "../../types/product.js";
 
