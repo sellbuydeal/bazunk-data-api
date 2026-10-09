@@ -56,7 +56,7 @@ export async function buildApp() {
     return officialSearch({query:parsed.data.q,page:parsed.data.page,currency:parsed.data.currency,country:parsed.data.country});
   });
   app.get("/internal/aliexpress/products/:id", {preHandler:internalAliExpress}, async (request:any,reply) => {
-    const parsed=z.object({id:z.string().regex(/^\\d{10,20}$/)}).safeParse(request.params);
+    const parsed=z.object({id:z.string().regex(/^\d{10,20}$/)}).safeParse(request.params);
     if(!parsed.success)return reply.code(400).send({error:"invalid_product_id"});
     const product=await officialProduct(parsed.data.id);
     return product ?? reply.code(404).send({error:"product_not_found"});
