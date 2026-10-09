@@ -1,3 +1,4 @@
+import { aliexpressAccessToken } from "../../aliexpress-oauth.js";
 import { createHmac } from "node:crypto";
 import type { NormalizedProduct, ProductSearchResult } from "../../types/product.js";
 import type { SearchOptions } from "../provider.js";
@@ -27,7 +28,7 @@ export async function officialCall(method: string, input: Record<string, string>
     ...input
   };
   if (method.startsWith("aliexpress.ds.")) {
-    const token = process.env.ALIEXPRESS_ACCESS_TOKEN;
+    const token = await aliexpressAccessToken();
     if (!token) throw new Error("AliExpress Dropshipping requests require ALIEXPRESS_ACCESS_TOKEN");
     params.session = token;
   }
