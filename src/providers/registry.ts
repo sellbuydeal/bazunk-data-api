@@ -3,6 +3,7 @@ import { AmazonProvider } from "./amazon/amazon-provider.js";
 import { AmazonHttpSource } from "./amazon/http-source.js";
 import { amazonNormalizer } from "./amazon/amazon-normalizer.js";
 import { ShopifyProvider } from "./shopify/shopify-provider.js";
+import { AliExpressProvider } from "./aliexpress/aliexpress-provider.js";
 import { DisabledProvider } from "./disabled-provider.js";
 import type { ProductProvider } from "./provider.js";
 import type { ProviderName } from "../types/product.js";
@@ -11,6 +12,7 @@ const providers = new Map<ProviderName, ProductProvider>();
 
 for (const name of ["amazon", "ebay", "walmart", "aliexpress", "shopify"] as const) providers.set(name, new DisabledProvider(name));
 providers.set("shopify",new ShopifyProvider());
+providers.set("aliexpress",new AliExpressProvider());
 if(config.AMAZON_PROVIDER==="http") providers.set("amazon",new AmazonProvider(new AmazonHttpSource(),amazonNormalizer));
 
 export function registerProvider(provider: ProductProvider) {
