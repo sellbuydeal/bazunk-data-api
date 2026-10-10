@@ -1,5 +1,5 @@
 import { beginAliExpressAuthorization, completeAliExpressAuthorization, aliexpressAuthorizationStatus } from "./aliexpress-oauth.js";
-import { officialConfigured, officialSearch, officialProduct } from "./providers/aliexpress/official-api.js";
+import { officialConfigured, officialSearch, officialSearchDiagnostics, officialProduct } from "./providers/aliexpress/official-api.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -46,6 +46,12 @@ export async function buildApp() {
     }
   });
 
+  app.get("/web/admin/aliexpress/search-diagnostics",{preHandler:internalAdmin},async(request:any,reply)=>{
+    const parsed=z.object({q:z.string().trim().min(1).max(120).default("phone case")}).safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:"invalid_query"});
+    try{return await officialSearchDiagnostics({query:parsed.data.q,page:1,currency:"GBP",country:"GB"});}
+    catch(e:any){request.log.error({err:e},"AliExpress diagnostics failed");return reply.code(502).send({error:"diagnostics_failed",detail:String(e?.message||"Request failed").slice(0,200)});}
+  });
   app.get("/web/aliexpress/status",{preHandler:webClient},async()=>({appCredentialsConfigured:officialConfigured(),accessTokenConfigured:await aliexpressAuthorizationStatus(),internalTokenConfigured:Boolean(process.env.ALIEXPRESS_INTERNAL_TOKEN),publicProviderEnabled:process.env.ALIEXPRESS_PROVIDER_ENABLED==="true",publicResaleLicenseConfirmed:process.env.ALIEXPRESS_RESALE_LICENSE_CONFIRMED==="true",publicSearchAvailable:getProvider("aliexpress").isConfigured(),note:"Credentials are never returned. OAuth tokens are stored encrypted in the database and refreshed when needed."}));
   app.post("/web/keys",{preHandler:webClient},async(request:any,reply)=>{const client=request.webClient;const parsed=z.object({label:z.string().trim().min(1).max(80).default("default")}).safeParse(request.body??{});if(!parsed.success)return reply.code(400).send({error:"invalid_request"});const created=await issueKey(client.id,parsed.data.label,["products:read","providers:read","usage:read"]);return reply.code(201).send({...created,warning:"Copy this key now. It will not be shown again."});});
   app.delete("/web/keys/:id",{preHandler:webClient},async(request:any,reply)=>{const client=request.webClient;const parsed=z.object({id:z.string().uuid()}).safeParse(request.params);if(!parsed.success)return reply.code(400).send({error:"invalid_request"});return await revokeKey(client.id,parsed.data.id)?reply.code(204).send():reply.code(404).send({error:"not_found"});});
