@@ -1,6 +1,7 @@
 import { beginAliExpressAuthorization, completeAliExpressAuthorization, aliexpressAuthorizationStatus } from "./aliexpress-oauth.js";
 import { officialConfigured, officialSearch, officialSearchDiagnostics, officialCompareSearches, officialRepeatSearchDiagnostic, officialSearchParameterProbe, officialProduct } from "./providers/aliexpress/official-api.js";
 import Fastify from "fastify";
+import { PACKAGES_USD_CENTS, DEFAULT_MARKUP_BPS, MIN_MARKUP_BPS, MINIMUM_SPREAD_MICRO_USD } from "./importer-pricing.js";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
@@ -44,9 +45,9 @@ export async function buildApp() {
     const database=(await import("./db.js")).db;
     if(!database)return reply.code(503).send({error:"database_unavailable"});
     return {currency:"USD",enabled:false,checkoutEnabled:false,
-      packagesUsdCents:[500,1000,2500,5000],
-      minimumMarkupBps:15000,defaultMarkupBps:17500,
-      minimumSpreadMicrocents:5000000,
+      packagesUsdCents:PACKAGES_USD_CENTS,
+      minimumMarkupBps:Number(MIN_MARKUP_BPS),defaultMarkupBps:Number(DEFAULT_MARKUP_BPS),
+      minimumSpreadMicrocents:Number(MINIMUM_SPREAD_MICRO_USD),
       message:"Paid importer checkout is disabled until Stripe verification and debit controls pass production tests."};
   });
   app.get("/web/marketplace/catalogue-preview",{preHandler:webClient},async(request:any,reply)=>{
