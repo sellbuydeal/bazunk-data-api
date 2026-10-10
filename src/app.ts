@@ -1,5 +1,5 @@
 import { beginAliExpressAuthorization, completeAliExpressAuthorization, aliexpressAuthorizationStatus } from "./aliexpress-oauth.js";
-import { officialConfigured, officialSearch, officialSearchDiagnostics, officialProduct } from "./providers/aliexpress/official-api.js";
+import { officialConfigured, officialSearch, officialSearchDiagnostics, officialCompareSearches, officialProduct } from "./providers/aliexpress/official-api.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -46,6 +46,10 @@ export async function buildApp() {
     }
   });
 
+  app.get("/web/admin/aliexpress/compare-searches",{preHandler:internalAdmin},async(request:any,reply)=>{
+    try{return await officialCompareSearches(["phone case","disco lights","women shoes"]);}
+    catch(e:any){request.log.error({err:e},"AliExpress comparison failed");return reply.code(502).send({error:"comparison_failed",detail:String(e?.message||"Request failed").slice(0,200)});}
+  });
   app.get("/web/admin/aliexpress/search-diagnostics",{preHandler:internalAdmin},async(request:any,reply)=>{
     const parsed=z.object({q:z.string().trim().min(1).max(120).default("phone case")}).safeParse(request.query);
     if(!parsed.success)return reply.code(400).send({error:"invalid_query"});
