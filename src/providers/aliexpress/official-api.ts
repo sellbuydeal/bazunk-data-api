@@ -106,6 +106,28 @@ function detailProduct(raw: unknown, requestedId: string, currency: string): Nor
     retrievedAt:new Date().toISOString()
   };
 }
+export async function officialCompareSearches(queries: string[]) {
+  const terms=queries.map(q=>q.trim().slice(0,120)).filter(Boolean).slice(0,3);
+  if(terms.length<2)throw new Error("At least two search queries are required");
+  const results=[] as {query:string;count:number;ids:string[];matches:number;currencies:string[]}[];
+  for(const query of terms){
+    const body=await officialCall("aliexpress.ds.text.search",{
+      keyword:query,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20"
+    });
+    const response=resultNode(body,"aliexpress.ds.text.search");
+    const data=obj(response.data),products=data.products;
+    const entries:unknown[]=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:[];
+    const parsed=entries.map(e=>searchProduct(e,"GBP")).filter((p):p is NormalizedProduct=>p!==null);
+    const tokens=query.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
+    results.push({query,count:parsed.length,ids:parsed.map(p=>p.externalId),matches:parsed.filter(p=>tokens.every(t=>p.title.toLowerCase().includes(t))).length,currencies:[...new Set(parsed.map(p=>p.price?.currency??"unknown"))]});
+  }
+  const comparisons=[] as {first:string;second:string;sharedIds:number;sharedPercent:number}[];
+  for(let i=0;i<results.length;i++)for(let j=i+1;j<results.length;j++){
+    const a=results[i],b=results[j],shared=a.ids.filter(id=>b.ids.includes(id)).length;
+    comparisons.push({first:a.query,second:b.query,sharedIds:shared,sharedPercent:Math.round(100*shared/Math.max(1,Math.min(a.ids.length,b.ids.length)))});
+  }
+  return {results:results.map(({ids,...rest})=>({...rest,sampleIds:ids.slice(0,5)})),comparisons,note:"Shared IDs and keyword match rates help diagnose whether AliExpress is honouring search terms."};
+}
 export async function officialSearchDiagnostics(options: SearchOptions) {
   const query=options.query.trim().slice(0,120);
   if(!query)throw new Error("Search keywords are required");
