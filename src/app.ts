@@ -1,5 +1,5 @@
 import { beginAliExpressAuthorization, completeAliExpressAuthorization, aliexpressAuthorizationStatus } from "./aliexpress-oauth.js";
-import { officialConfigured, officialSearch, officialSearchDiagnostics, officialCompareSearches, officialRepeatSearchDiagnostic, officialProduct } from "./providers/aliexpress/official-api.js";
+import { officialConfigured, officialSearch, officialSearchDiagnostics, officialCompareSearches, officialRepeatSearchDiagnostic, officialSearchParameterProbe, officialProduct } from "./providers/aliexpress/official-api.js";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
@@ -46,6 +46,10 @@ export async function buildApp() {
     }
   });
 
+  app.get("/web/admin/aliexpress/parameter-probe",{preHandler:internalAdmin},async(request:any,reply)=>{
+    try{return await officialSearchParameterProbe(String(request.query?.q??"phone case"));}
+    catch(e:any){request.log.error({err:e},"AliExpress parameter probe failed");return reply.code(502).send({error:"parameter_probe_failed",detail:String(e?.message||"Request failed").slice(0,200)});}
+  });
   app.get("/web/admin/aliexpress/repeat-search",{preHandler:internalAdmin},async(request:any,reply)=>{
     try{return await officialRepeatSearchDiagnostic(String(request.query?.q??"phone case"));}
     catch(e:any){request.log.error({err:e},"AliExpress repeat search failed");return reply.code(502).send({error:"repeat_search_failed",detail:String(e?.message||"Request failed").slice(0,200)});}
