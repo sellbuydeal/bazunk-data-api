@@ -109,25 +109,31 @@ function detailProduct(raw: unknown, requestedId: string, currency: string): Nor
 /** Read-only API compatibility probe. Never replaces production search or exposes credentials. */
 export async function officialSearchParameterProbe(query: string) {
  const q=query.trim().slice(0,120);if(!q)throw new Error("Keyword required");
- const variants: {name:string;method:string;params:Record<string,string>}[]=[
-  {name:"ds.text.search / standard",method:"aliexpress.ds.text.search",params:{keyword:q,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20"}},
-  {name:"ds.text.search / extended",method:"aliexpress.ds.text.search",params:{keyword:q,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20",search_extend:"{}",sort:"salesDesc"}},
-  {name:"ds.product.search / alternative",method:"aliexpress.ds.product.search",params:{keywords:q,page_no:"1",page_size:"20"}}
+ const base={keyword:q,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20"};
+ const variants:{name:string;method:string;params:Record<string,string>}[]=[
+  {name:"DS baseline",method:"aliexpress.ds.text.search",params:base},
+  {name:"DS explicit sorting",method:"aliexpress.ds.text.search",params:{...base,sort:"salesDesc"}},
+  {name:"DS US locale",method:"aliexpress.ds.text.search",params:{...base,countryCode:"US",currency:"USD"}},
+  {name:"DS nonsense control",method:"aliexpress.ds.text.search",params:{...base,keyword:"zzzxqvnotarealproduct999"}},
+  {name:"Affiliate keyword search",method:"aliexpress.affiliate.product.query",params:{keywords:q,target_currency:"GBP",target_language:"EN",ship_to_country:"GB",page_no:"1",page_size:"20"}}
  ];
- const output=[] as {name:string;status:string;count:number;matches:number;totalCount:number|null;sampleTitles:string[];error?:string}[];
+ const output=[] as {name:string;status:string;count:number;matches:number;totalCount:number|null;recommendations:number;types:Record<string,number>;sampleTitles:string[];sampleIds:string[];error?:string}[];
  for(const variant of variants){
   try{
    const body=await officialCall(variant.method,variant.params);
-   const response=resultNode(body,variant.method),data=obj(response.data),result=obj(response.result);
+   const response=resultNode(body,variant.method),data=obj(response.data),result=obj(response.result??obj(response.resp_result).result);
    const products=data.products??result.products??response.products;
-   const entries:unknown[]=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:Array.isArray(obj(products).product)?obj(products).product:[];
+   const candidates=[products,obj(products).selection_search_product,obj(products).product,obj(products).products,obj(products).item,obj(result).products,obj(obj(result).products).product];
+   const entries:unknown[]=candidates.find(Array.isArray)??[];
    const titles=entries.map(e=>str(obj(e).title??obj(e).product_title??obj(e).subject)).filter(Boolean);
    const tokens=q.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
-   const total=Number(data.totalCount??result.total_count);
-   output.push({name:variant.name,status:"ok",count:entries.length,matches:titles.filter(t=>tokens.every(token=>t.toLowerCase().includes(token))).length,totalCount:Number.isFinite(total)?total:null,sampleTitles:titles.slice(0,3).map(t=>t.slice(0,110))});
-  }catch(e:any){output.push({name:variant.name,status:"error",count:0,matches:0,totalCount:null,sampleTitles:[],error:String(e?.message??e).slice(0,160)});}
+   const types:Record<string,number>={};for(const e of entries){const type=str(obj(e).type||"unspecified").slice(0,40);types[type]=(types[type]??0)+1;}
+   const rawTotal=data.totalCount??result.total_count??result.total_record_count;
+   const total=rawTotal==null?null:Number(rawTotal);
+   output.push({name:variant.name,status:"ok",count:entries.length,matches:titles.filter(t=>tokens.every(token=>t.toLowerCase().includes(token))).length,totalCount:total!==null&&Number.isFinite(total)?total:null,recommendations:types.recommend??0,types,sampleTitles:titles.slice(0,3).map(t=>t.slice(0,110)),sampleIds:entries.slice(0,5).map(e=>str(obj(e).itemId??obj(e).product_id??obj(e).productId)).filter(Boolean)});
+  }catch(e:any){output.push({name:variant.name,status:"error",count:0,matches:0,totalCount:null,recommendations:0,types:{},sampleTitles:[],sampleIds:[],error:String(e?.message??e).slice(0,160)});}
  }
- return {query:q,variants:output,productionSearchUnchanged:true};
+ return {query:q,variants:output,productionSearchUnchanged:true,interpretation:"Check product types and nonsense control. A returned list with totalCount=0 or type=recommend is not proof of keyword matches. Affiliate search requires separate permission."};
 }
 export async function officialRepeatSearchDiagnostic(query: string) {
   const term=query.trim().slice(0,120);
