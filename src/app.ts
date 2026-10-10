@@ -40,6 +40,15 @@ export async function buildApp() {
   });
   // Only catalogue records already stored by Bazunk are exposed here.
   // This route does not trigger paid provider calls or consume supplier quota.
+  app.get("/web/marketplace/billing-status",{preHandler:webClient},async(request:any,reply)=>{
+    const database=(await import("./db.js")).db;
+    if(!database)return reply.code(503).send({error:"database_unavailable"});
+    return {currency:"USD",enabled:false,checkoutEnabled:false,
+      packagesUsdCents:[500,1000,2500,5000],
+      minimumMarkupBps:15000,defaultMarkupBps:17500,
+      minimumSpreadMicrocents:5000000,
+      message:"Paid importer checkout is disabled until Stripe verification and debit controls pass production tests."};
+  });
   app.get("/web/marketplace/catalogue-preview",{preHandler:webClient},async(request:any,reply)=>{
     const parsed=z.object({provider:z.enum(["ebay","amazon","aliexpress","shopify","woocommerce"]),limit:z.coerce.number().int().min(1).max(12).default(6)}).safeParse(request.query);
     if(!parsed.success)return reply.code(400).send({error:"invalid_request"});
