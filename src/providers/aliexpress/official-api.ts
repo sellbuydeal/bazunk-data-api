@@ -62,7 +62,7 @@ function resultNode(body: Obj, method: string): Obj {
 }
 function images(raw: unknown): string[] {
   const entries = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split(";") : [];
-  return entries.map(str).map(x => x.trim()).filter(x => /^https?:\/\//.test(x)).slice(0,12);
+  return entries.map(str).map(x => x.trim()).map(x=>x.startsWith("//")?"https:"+x:x).filter(x => /^https?:\/\//.test(x)).slice(0,12);
 }
 function searchProduct(raw: unknown, currency: string): NormalizedProduct | null {
   const p = obj(raw), id = str(p.itemId), title = str(p.title).trim();
