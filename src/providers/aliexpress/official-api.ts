@@ -106,6 +106,34 @@ function detailProduct(raw: unknown, requestedId: string, currency: string): Nor
     retrievedAt:new Date().toISOString()
   };
 }
+export async function officialRepeatSearchDiagnostic(query: string) {
+  const term=query.trim().slice(0,120);
+  if(!term)throw new Error("Search keyword required");
+  const runs=[] as {attempt:number;count:number;matches:number;sampleIds:string[];responseKeys:string[];dataKeys:string[];metadata:Record<string,string|number|boolean>}[];
+  const allIds:string[][]=[];
+  for(let attempt=1;attempt<=3;attempt++){
+    const body=await officialCall("aliexpress.ds.text.search",{keyword:term,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20"});
+    const response=resultNode(body,"aliexpress.ds.text.search"),data=obj(response.data),products=data.products;
+    const entries:unknown[]=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:[];
+    const parsed=entries.map(e=>searchProduct(e,"GBP")).filter((p):p is NormalizedProduct=>p!==null);
+    const tokens=term.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
+    const ids=parsed.map(p=>p.externalId);allIds.push(ids);
+    const metadata:Record<string,string|number|boolean>={};
+    for(const [prefix,node] of [["response",response],["data",data]] as const){
+      for(const [key,v] of Object.entries(node)){
+        if(/token|secret|session|sign|auth|key|url|image|product|item/i.test(key))continue;
+        if(typeof v==="string"||typeof v==="number"||typeof v==="boolean")metadata[prefix+"."+key]=typeof v==="string"?v.slice(0,100):v;
+      }
+    }
+    runs.push({attempt,count:parsed.length,matches:parsed.filter(p=>tokens.every(t=>p.title.toLowerCase().includes(t))).length,sampleIds:ids.slice(0,5),responseKeys:Object.keys(response).slice(0,15),dataKeys:Object.keys(data).slice(0,15),metadata});
+  }
+  const overlaps=[] as {first:number;second:number;shared:number;percentage:number}[];
+  for(let i=0;i<3;i++)for(let j=i+1;j<3;j++){
+    const shared=allIds[i].filter(id=>allIds[j].includes(id)).length;
+    overlaps.push({first:i+1,second:j+1,shared,percentage:Math.round(shared*100/Math.max(1,Math.min(allIds[i].length,allIds[j].length)))});
+  }
+  return {query:term,runs,overlaps};
+}
 export async function officialCompareSearches(queries: string[]) {
   const terms=queries.map(q=>q.trim().slice(0,120)).filter(Boolean).slice(0,3);
   if(terms.length<2)throw new Error("At least two search queries are required");
