@@ -38,6 +38,16 @@ export async function buildApp() {
       billingEnabled:false,sharedWalletEnabled:false,
       providers,note:"Paid supplier calls are unavailable until verified checkout, shared wallet settlement and atomic debits are deployed."};
   });
+  // Only catalogue records already stored by Bazunk are exposed here.
+  // This route does not trigger paid provider calls or consume supplier quota.
+  app.get("/web/marketplace/catalogue-preview",{preHandler:webClient},async(request:any,reply)=>{
+    const parsed=z.object({provider:z.enum(["ebay","amazon","aliexpress","shopify","woocommerce"]),limit:z.coerce.number().int().min(1).max(12).default(6)}).safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:"invalid_request"});
+    const database=(await import("./db.js")).db;
+    if(!database)return reply.code(503).send({error:"database_unavailable"});
+    const rows=await database.query("SELECT product,last_fetched_at FROM product_catalogue WHERE provider=$1 ORDER BY last_fetched_at DESC LIMIT $2",[parsed.data.provider,parsed.data.limit]);
+    return {provider:parsed.data.provider,items:rows.rows.map((r:any)=>r.product),source:"cached_catalogue",paidRequestsMade:0};
+  });
   app.get("/web/account",{preHandler:webClient},async(request:any)=>{const client=request.webClient;return{client,keys:await listKeys(client.id),usage:await usageSummary(client.id),recentActivity:await recentActivity(client.id)};});
   app.patch("/web/preferences",{preHandler:webClient},async(request:any,reply)=>{const b=z.object({currency:z.enum(["GBP","USD","EUR","AUD","CAD"])}).safeParse(request.body??{});if(!b.success)return reply.code(400).send({error:"invalid_request"});const database=(await import("./db.js")).db;if(!database)return reply.code(503).send({error:"database_unavailable"});await database.query("UPDATE api_clients SET preferred_currency=$2 WHERE id=$1",[request.webClient.id,b.data.currency]);return{currency:b.data.currency};});
   app.get("/web/admin/aliexpress/connect",{preHandler:internalAdmin},async(request:any,reply)=>{try{return {authorizationUrl:await beginAliExpressAuthorization()};}catch(e){request.log.error(e);return reply.code(503).send({error:"aliexpress_oauth_unavailable"});}});
