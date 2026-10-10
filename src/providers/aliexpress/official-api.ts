@@ -121,8 +121,8 @@ export async function officialSearch(options: SearchOptions): Promise<ProductSea
   const tokens=query.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
   const items=entries.map((x: unknown)=>searchProduct(x,currency))
     .filter((x: NormalizedProduct | null):x is NormalizedProduct=>x!==null)
-    .filter(p=>tokens.length>0 && tokens.every(t=>p.title.toLowerCase().includes(t)))
-    .filter(p=>!p.price || p.price.currency===currency);
+    .filter((p: NormalizedProduct)=>tokens.length>0 && tokens.every(t=>p.title.toLowerCase().includes(t)))
+    .filter((p: NormalizedProduct)=>!p.price || p.price.currency===currency);
   return {provider:"aliexpress",query,page,items,nextPage:entries.length===20?page+1:undefined};
 }
 export async function officialProduct(id:string):Promise<NormalizedProduct|null>{
