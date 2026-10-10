@@ -106,6 +106,30 @@ function detailProduct(raw: unknown, requestedId: string, currency: string): Nor
     retrievedAt:new Date().toISOString()
   };
 }
+export async function officialSearchDiagnostics(options: SearchOptions) {
+  const query=options.query.trim().slice(0,120);
+  if(!query)throw new Error("Search keywords are required");
+  const currency=isoCurrency(options.currency,"GBP");
+  const body=await officialCall("aliexpress.ds.text.search",{
+    keyword:query,local:"en_US",countryCode:(options.country??"GB").toUpperCase().slice(0,2),
+    currency,page_index:"1",page_size:"20"
+  });
+  const response=resultNode(body,"aliexpress.ds.text.search");
+  const data=obj(response.data),products=data.products;
+  const entries:unknown[]=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:[];
+  const tokens=query.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
+  const normalized=entries.map(e=>searchProduct(e,currency)).filter((p):p is NormalizedProduct=>p!==null);
+  const matching=normalized.filter(p=>tokens.every(t=>p.title.toLowerCase().includes(t)));
+  const accepted=matching.filter(p=>!p.price||p.price.currency===currency);
+  return {
+    query,requestedCurrency:currency,returned:entries.length,parsed:normalized.length,
+    keywordMatches:matching.length,currencyMatches:accepted.length,
+    currencies:[...new Set(normalized.map(p=>p.price?.currency??"unknown"))],
+    // Titles and currency only; never expose raw API payload, session tokens or credentials.
+    samples:normalized.slice(0,5).map(p=>({title:p.title.slice(0,160),currency:p.price?.currency??"unknown",keywordMatch:tokens.every(t=>p.title.toLowerCase().includes(t))})),
+    responseKeys:Object.keys(response).slice(0,12),dataKeys:Object.keys(data).slice(0,12)
+  };
+}
 export async function officialSearch(options: SearchOptions): Promise<ProductSearchResult> {
   const query=options.query.trim().slice(0,120),page=Math.min(100,Math.max(1,options.page??1));
   if(!query)throw new Error("Search keywords are required");
