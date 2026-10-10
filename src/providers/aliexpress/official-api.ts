@@ -109,7 +109,7 @@ function detailProduct(raw: unknown, requestedId: string, currency: string): Nor
 /** Read-only API compatibility probe. Never replaces production search or exposes credentials. */
 export async function officialSearchParameterProbe(query: string) {
  const q=query.trim().slice(0,120);if(!q)throw new Error("Keyword required");
- const variants=[
+ const variants: {name:string;method:string;params:Record<string,string>}[]=[
   {name:"ds.text.search / standard",method:"aliexpress.ds.text.search",params:{keyword:q,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20"}},
   {name:"ds.text.search / extended",method:"aliexpress.ds.text.search",params:{keyword:q,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20",search_extend:"{}",sort:"salesDesc"}},
   {name:"ds.product.search / alternative",method:"aliexpress.ds.product.search",params:{keywords:q,page_no:"1",page_size:"20"}}
