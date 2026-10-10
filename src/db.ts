@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS usage_events(id bigserial PRIMARY KEY,client_id uuid 
 CREATE INDEX IF NOT EXISTS usage_events_client_date_idx ON usage_events(client_id,created_at DESC);
 CREATE TABLE IF NOT EXISTS support_tickets(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),client_id uuid NOT NULL REFERENCES api_clients(id) ON DELETE CASCADE,subject text NOT NULL,category text NOT NULL DEFAULT 'general',priority text NOT NULL DEFAULT 'normal' CHECK(priority IN('low','normal','high')),status text NOT NULL DEFAULT 'open' CHECK(status IN('open','in_progress','resolved','closed')),message text NOT NULL,admin_reply text,created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
 CREATE INDEX IF NOT EXISTS support_tickets_client_date_idx ON support_tickets(client_id,created_at DESC);
-CREATE TABLE IF NOT EXISTS platform_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),default_currency text NOT NULL DEFAULT 'GBP' CHECK(default_currency IN('GBP','USD','EUR','AUD','CAD')),updated_at timestamptz NOT NULL DEFAULT now());
-INSERT INTO platform_settings(id,default_currency) VALUES(1,'GBP') ON CONFLICT(id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS platform_settings(id integer PRIMARY KEY DEFAULT 1 CHECK(id=1),default_currency text NOT NULL DEFAULT 'USD' CHECK(default_currency IN('GBP','USD','EUR','AUD','CAD')),updated_at timestamptz NOT NULL DEFAULT now());
+INSERT INTO platform_settings(id,default_currency) VALUES(1,'USD') ON CONFLICT(id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS billing_plans(plan text PRIMARY KEY CHECK(plan IN('developer','commercial')),monthly_quota integer NOT NULL CHECK(monthly_quota>=0),rate_limit_per_minute integer NOT NULL CHECK(rate_limit_per_minute>0),prices jsonb NOT NULL DEFAULT '{}'::jsonb,active boolean NOT NULL DEFAULT true,updated_at timestamptz NOT NULL DEFAULT now());
 INSERT INTO billing_plans(plan,monthly_quota,rate_limit_per_minute,prices) VALUES
 ('developer',10000,60,'{"GBP":9,"USD":12,"EUR":11,"AUD":18,"CAD":16}'::jsonb),
