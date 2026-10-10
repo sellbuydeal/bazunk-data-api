@@ -2,7 +2,7 @@ import { beginAliExpressAuthorization, completeAliExpressAuthorization, aliexpre
 import { officialConfigured, officialSearch, officialSearchDiagnostics, officialCompareSearches, officialRepeatSearchDiagnostic, officialSearchParameterProbe, officialProduct } from "./providers/aliexpress/official-api.js";
 import Fastify from "fastify";
 import { IMPORTER_PACKAGES, EXTRA_REQUEST_USD_CENTS, IMPORTER_CHECKOUT_ENABLED } from "./importer-packages.js";
-import { PACKAGES_USD_CENTS, DEFAULT_MARKUP_BPS, MIN_MARKUP_BPS, MINIMUM_SPREAD_MICRO_USD } from "./importer-pricing.js";
+import { DEFAULT_MARKUP_BPS, MIN_MARKUP_BPS, MINIMUM_SPREAD_MICRO_USD } from "./importer-pricing.js";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import { z } from "zod";
