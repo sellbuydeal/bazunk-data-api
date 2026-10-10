@@ -33,6 +33,19 @@ export async function buildApp() {
   app.get("/web/admin/aliexpress/connect",{preHandler:internalAdmin},async(request:any,reply)=>{try{return {authorizationUrl:await beginAliExpressAuthorization()};}catch(e){request.log.error(e);return reply.code(503).send({error:"aliexpress_oauth_unavailable"});}});
   app.get("/internal/aliexpress/oauth/callback",async(request:any,reply)=>{const expected=process.env.ALIEXPRESS_INTERNAL_TOKEN;const supplied=request.headers["x-internal-token"];if(!expected||supplied!==expected)return reply.code(401).send({error:"unauthorized"});const query=z.object({code:z.string(),state:z.string()}).safeParse(request.query);if(!query.success)return reply.code(400).send({error:"invalid_callback"});try{await completeAliExpressAuthorization(query.data.code,query.data.state);return {connected:true};}catch(e){request.log.error(e);return reply.code(400).send({error:"authorization_failed"});}});
   app.get("/web/admin/aliexpress/oauth-status",{preHandler:internalAdmin},async()=>({authorized:await aliexpressAuthorizationStatus()}));
+  app.get("/web/admin/aliexpress/test-search",{preHandler:internalAdmin},async(request:any,reply)=>{
+    if(!await aliexpressAuthorizationStatus())return reply.code(409).send({error:"not_authorized"});
+    const parsed=z.object({q:z.string().trim().min(1).max(120).default("phone case")}).safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:"invalid_query"});
+    try {
+      const result=await officialSearch({query:parsed.data.q,page:1,currency:"GBP",country:"GB"});
+      return {ok:true,query:result.query,count:result.items.length,products:result.items.slice(0,5).map(p=>({id:p.externalId,title:p.title,price:p.price,image:p.images[0]?.url,sourceUrl:p.sourceUrl})),message:result.items.length?"Live AliExpress search returned products":"AliExpress responded, but no valid products were parsed"};
+    }catch(e:any){
+      request.log.error({err:e},"AliExpress live search test failed");
+      return reply.code(502).send({error:"search_failed",detail:String(e?.message||"AliExpress request failed").slice(0,200)});
+    }
+  });
+
   app.get("/web/aliexpress/status",{preHandler:webClient},async()=>({appCredentialsConfigured:officialConfigured(),accessTokenConfigured:await aliexpressAuthorizationStatus(),internalTokenConfigured:Boolean(process.env.ALIEXPRESS_INTERNAL_TOKEN),publicProviderEnabled:process.env.ALIEXPRESS_PROVIDER_ENABLED==="true",publicResaleLicenseConfirmed:process.env.ALIEXPRESS_RESALE_LICENSE_CONFIRMED==="true",publicSearchAvailable:getProvider("aliexpress").isConfigured(),note:"Credentials are never returned. OAuth tokens are stored encrypted in the database and refreshed when needed."}));
   app.post("/web/keys",{preHandler:webClient},async(request:any,reply)=>{const client=request.webClient;const parsed=z.object({label:z.string().trim().min(1).max(80).default("default")}).safeParse(request.body??{});if(!parsed.success)return reply.code(400).send({error:"invalid_request"});const created=await issueKey(client.id,parsed.data.label,["products:read","providers:read","usage:read"]);return reply.code(201).send({...created,warning:"Copy this key now. It will not be shown again."});});
   app.delete("/web/keys/:id",{preHandler:webClient},async(request:any,reply)=>{const client=request.webClient;const parsed=z.object({id:z.string().uuid()}).safeParse(request.params);if(!parsed.success)return reply.code(400).send({error:"invalid_request"});return await revokeKey(client.id,parsed.data.id)?reply.code(204).send():reply.code(404).send({error:"not_found"});});
