@@ -67,11 +67,13 @@ function images(raw: unknown): string[] {
 function searchProduct(raw: unknown, currency: string): NormalizedProduct | null {
   const p = obj(raw), id = str(p.itemId), title = str(p.title).trim();
   if (!/^\d{10,20}$/.test(id) || !title) return null;
-  const price = amount(p.targetSalePrice ?? p.salePrice);
+  const hasTargetPrice = amount(p.targetSalePrice) !== undefined;
+  const price = amount(hasTargetPrice ? p.targetSalePrice : p.salePrice);
+  const priceCurrency = hasTargetPrice ? (p.targetSalePriceCurrency ?? p.targetOriginalPriceCurrency ?? currency) : (p.salePriceCurrency ?? p.currency ?? "CNY");
   return {
     provider:"aliexpress", externalId:id, sourceUrl:"https://www.aliexpress.com/item/"+id+".html",
     title, category:str(p.cateId), images:images([p.itemMainPic]).map(url => ({url})), features:[], variants:[],
-    price:price === undefined ? undefined : {amount:price,currency:isoCurrency(p.salePriceCurrency,currency)},
+    price:price === undefined ? undefined : {amount:price,currency:isoCurrency(priceCurrency,hasTargetPrice?currency:"CNY")},
     availability:"unknown", retrievedAt:new Date().toISOString()
   };
 }
@@ -114,7 +116,13 @@ export async function officialSearch(options: SearchOptions): Promise<ProductSea
   });
   const response=resultNode(body,"aliexpress.ds.text.search");
   const data=obj(response.data), products=data.products, entries=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:[];
-  const items=entries.map((x: unknown)=>searchProduct(x,currency)).filter((x: NormalizedProduct | null):x is NormalizedProduct=>x!==null);
+  // AliExpress sometimes returns broad recommendations unrelated to the requested keywords.
+  // Do not advertise these as valid keyword matches or silently mix currencies.
+  const tokens=query.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
+  const items=entries.map((x: unknown)=>searchProduct(x,currency))
+    .filter((x: NormalizedProduct | null):x is NormalizedProduct=>x!==null)
+    .filter(p=>tokens.length>0 && tokens.every(t=>p.title.toLowerCase().includes(t)))
+    .filter(p=>!p.price || p.price.currency===currency);
   return {provider:"aliexpress",query,page,items,nextPage:entries.length===20?page+1:undefined};
 }
 export async function officialProduct(id:string):Promise<NormalizedProduct|null>{
