@@ -226,7 +226,10 @@ export async function officialSearch(options: SearchOptions): Promise<ProductSea
     .filter((x: NormalizedProduct | null):x is NormalizedProduct=>x!==null)
     .filter((p: NormalizedProduct)=>tokens.length>0 && tokens.every(t=>p.title.toLowerCase().includes(t)))
     .filter((p: NormalizedProduct)=>!p.price || p.price.currency===currency);
-  return {provider:"aliexpress",query,page,items,nextPage:entries.length===20?page+1:undefined};
+  const reportedTotal=Number(data.totalCount);
+  // A full page of recommendation fallback is not evidence that another search page exists.
+  const nextPage=Number.isFinite(reportedTotal)&&reportedTotal>page*20&&entries.length===20?page+1:undefined;
+  return {provider:"aliexpress",query,page,items,nextPage};
 }
 export async function officialProduct(id:string):Promise<NormalizedProduct|null>{
   if(!/^\d{10,20}$/.test(id))throw new Error("Invalid AliExpress product ID");
