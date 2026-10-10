@@ -106,6 +106,29 @@ function detailProduct(raw: unknown, requestedId: string, currency: string): Nor
     retrievedAt:new Date().toISOString()
   };
 }
+/** Read-only API compatibility probe. Never replaces production search or exposes credentials. */
+export async function officialSearchParameterProbe(query: string) {
+ const q=query.trim().slice(0,120);if(!q)throw new Error("Keyword required");
+ const variants=[
+  {name:"ds.text.search / standard",method:"aliexpress.ds.text.search",params:{keyword:q,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20"}},
+  {name:"ds.text.search / extended",method:"aliexpress.ds.text.search",params:{keyword:q,local:"en_US",countryCode:"GB",currency:"GBP",page_index:"1",page_size:"20",search_extend:"{}",sort:"salesDesc"}},
+  {name:"ds.product.search / alternative",method:"aliexpress.ds.product.search",params:{keywords:q,page_no:"1",page_size:"20"}}
+ ];
+ const output=[] as {name:string;status:string;count:number;matches:number;totalCount:number|null;sampleTitles:string[];error?:string}[];
+ for(const variant of variants){
+  try{
+   const body=await officialCall(variant.method,variant.params);
+   const response=resultNode(body,variant.method),data=obj(response.data),result=obj(response.result);
+   const products=data.products??result.products??response.products;
+   const entries:unknown[]=Array.isArray(products)?products:Array.isArray(obj(products).selection_search_product)?obj(products).selection_search_product:Array.isArray(obj(products).product)?obj(products).product:[];
+   const titles=entries.map(e=>str(obj(e).title??obj(e).product_title??obj(e).subject)).filter(Boolean);
+   const tokens=q.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
+   const total=Number(data.totalCount??result.total_count);
+   output.push({name:variant.name,status:"ok",count:entries.length,matches:titles.filter(t=>tokens.every(token=>t.toLowerCase().includes(token))).length,totalCount:Number.isFinite(total)?total:null,sampleTitles:titles.slice(0,3).map(t=>t.slice(0,110))});
+  }catch(e:any){output.push({name:variant.name,status:"error",count:0,matches:0,totalCount:null,sampleTitles:[],error:String(e?.message??e).slice(0,160)});}
+ }
+ return {query:q,variants:output,productionSearchUnchanged:true};
+}
 export async function officialRepeatSearchDiagnostic(query: string) {
   const term=query.trim().slice(0,120);
   if(!term)throw new Error("Search keyword required");
