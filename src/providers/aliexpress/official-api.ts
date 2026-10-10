@@ -222,7 +222,8 @@ export async function officialSearch(options: SearchOptions): Promise<ProductSea
   // AliExpress sometimes returns broad recommendations unrelated to the requested keywords.
   // Do not advertise these as valid keyword matches or silently mix currencies.
   const tokens=query.toLowerCase().match(/[a-z0-9]+/g)?.filter(t=>t.length>=2)??[];
-  const items=entries.map((x: unknown)=>searchProduct(x,currency))
+  const genuineEntries=(entries as unknown[]).filter((x:unknown)=>str(obj(x).type).toLowerCase()!=="recommend");
+  const items=genuineEntries.map((x: unknown)=>searchProduct(x,currency))
     .filter((x: NormalizedProduct | null):x is NormalizedProduct=>x!==null)
     .filter((p: NormalizedProduct)=>tokens.length>0 && tokens.every(t=>p.title.toLowerCase().includes(t)))
     .filter((p: NormalizedProduct)=>!p.price || p.price.currency===currency);
